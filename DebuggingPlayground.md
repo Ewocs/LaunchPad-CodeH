@@ -94,7 +94,7 @@ npm audit
 npm update <package-name>
 ```
 
-### Problem: React/Vue version mismatches
+### Problem: React version mismatches
 
 **Causes:**
 - Multiple versions installed
