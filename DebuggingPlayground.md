@@ -74,7 +74,7 @@ taskkill /PID <PID> /F
 - Create `.env.local` in project root
 - Verify it contains required variables
 - Restart development server after changes
-- Check `gitignore` - `.env.local` should be ignored
+- Check `.gitignore` - `.env.local` should be ignored
 
 ---
 
