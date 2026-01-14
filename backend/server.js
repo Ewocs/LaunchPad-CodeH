@@ -2,7 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
+const { apiGeneralLimiter } = require('./middleware/rateLimiter');
 require('dotenv').config();
 
 const authRoutes = require('./routes/auth');
@@ -21,6 +21,8 @@ const globalErrorHandler = require('./middleware/errorHandler');
 const app = express();
 
 // Trust proxy configuration
+// This is critical for rate limiting to work correctly behind proxies/load balancers
+// Set to true for development, or specify the number of trusted proxies in production
 app.set('trust proxy', true);
 
 // Security middleware
@@ -28,31 +30,9 @@ app.use(helmet({
   crossOriginResourcePolicy: false,
 }));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 1000,
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: (req) => {
-    if (process.env.NODE_ENV === 'development') {
-      const ip = req.ip || req.connection.remoteAddress;
-      return (
-        ip === '127.0.0.1' ||
-        ip === '::1' ||
-        ip?.startsWith('192.168.') ||
-        ip?.startsWith('10.') ||
-        ip?.startsWith('172.')
-      );
-    }
-    return false;
-  },
-  message: {
-    error: 'Too many requests from this IP, please try again later.',
-    retryAfter: '15 minutes'
-  }
-});
-app.use(limiter);
+// General API rate limiting - applied to all routes
+// Specific authentication routes have their own stricter rate limiting
+app.use(apiGeneralLimiter);
 
 // CORS
 app.use(cors({
