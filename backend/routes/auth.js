@@ -3,11 +3,11 @@ const { body, validationResult } = require('express-validator');
 
 const googleAuthService = require('../services/googleAuth');
 const { authMiddleware } = require('../middleware/auth');
-const { 
-  authStrictLimiter, 
-  authModerateLimiter, 
-  loginAttemptTracker, 
-  wrapAuthResponse 
+const {
+  authStrictLimiter,
+  authModerateLimiter,
+  loginAttemptTracker,
+  wrapAuthResponse
 } = require('../middleware/rateLimiter');
 
 const asyncHandler = require('../middleware/asyncHandler');
@@ -188,17 +188,21 @@ router.patch(
     .isIn(['daily', 'weekly', 'monthly', 'manual']),
   body('emailCategories').optional().isArray(),
   body('notifications').optional().isBoolean(),
+  body('theme')
+    .optional()
+    .isIn(['breach-dark', 'security-blue', 'high-contrast']),
   asyncHandler(async (req, res) => {
     handleValidation(req);
 
     const user = req.user;
-    const { scanFrequency, emailCategories, notifications } = req.body;
+    const { scanFrequency, emailCategories, notifications, theme } = req.body;
 
     if (scanFrequency) user.preferences.scanFrequency = scanFrequency;
     if (emailCategories)
       user.preferences.emailCategories = emailCategories;
     if (notifications !== undefined)
       user.preferences.notifications = notifications;
+    if (theme) user.preferences.theme = theme;
 
     await user.save();
 
