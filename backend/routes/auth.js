@@ -6,185 +6,323 @@ const { authMiddleware } = require('../middleware/auth');
 
 const asyncHandler = require('../middleware/asyncHandler');
 const AppError = require('../errors/AppError');
-const AuthError = require('../errors/AuthError');
+
+const User = require('../models/User');
 
 const router = express.Router();
 
-/**
- * GET Google OAuth URL
- */
-router.get('/google/url', asyncHandler(async (req, res) => {
-  const authUrl = googleAuthService.getAuthUrl();
-  res.json({ authUrl });
-}));
-
-/**
- * GET Google Re-Authorization URL
- */
-router.get('/google/reauth-url', authMiddleware, asyncHandler(async (req, res) => {
-  await googleAuthService.clearUserTokens(req.user._id);
-  const authUrl = googleAuthService.getAuthUrl();
-  res.json({ authUrl });
-}));
-
-/**
- * Google OAuth Callback (GET - browser redirect)
- */
-router.get('/google/callback', asyncHandler(async (req, res) => {
-  const { code, error } = req.query;
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-
-  if (error) {
-    return res.redirect(`${frontendUrl}/login?error=${error}`);
+/* =====================================================
+   Utility: Validation Error Handler
+===================================================== */
+const handleValidation = (req) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    throw new AppError('Validation failed', 400);
   }
+};
 
-  if (!code) {
-    return res.redirect(`${frontendUrl}/login?error=no_code`);
-  }
-
-  const tokens = await googleAuthService.getTokens(code);
-  const userInfo = await googleAuthService.getUserInfo(tokens.access_token);
-  const user = await googleAuthService.createOrUpdateUser(userInfo, tokens);
-
-  const jwtToken = googleAuthService.generateJWT(user._id);
-
-  res.redirect(
-    `${frontendUrl}/login/callback?token=${jwtToken}&user=${encodeURIComponent(
-      JSON.stringify({
-        id: user._id,
-        email: user.email,
-        name: user.name,
-        picture: user.picture
-      })
-    )}`
-  );
-}));
+/* =====================================================
+   GOOGLE OAUTH FLOW
+===================================================== */
 
 /**
- * Google OAuth Callback (POST - API)
+ * @route   GET /api/auth/google/url
+ * @desc    Get Google OAuth URL
+ * @access  Public
+ */
+router.get(
+  '/google/url',
+  asyncHandler(async (req, res) => {
+    const authUrl = googleAuthService.getAuthUrl();
+    res.status(200).json({ authUrl });
+  })
+);
+
+/**
+ * @route   GET /api/auth/google/reauth-url
+ * @desc    Re-authorize Google access
+ * @access  Private
+ */
+router.get(
+  '/google/reauth-url',
+  authMiddleware,
+  asyncHandler(async (req, res) => {
+    await googleAuthService.clearUserTokens(req.user._id);
+    const authUrl = googleAuthService.getAuthUrl();
+    res.status(200).json({ authUrl });
+  })
+);
+
+/**
+ * @route   GET /api/auth/google/callback
+ * @desc    Google OAuth callback (Browser redirect)
+ * @access  Public
+ */
+router.get(
+  '/google/callback',
+  asyncHandler(async (req, res) => {
+    const { code, error } = req.query;
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+    if (error) {
+      return res.redirect(`${frontendUrl}/login?error=${error}`);
+    }
+
+    if (!code) {
+      return res.redirect(`${frontendUrl}/login?error=no_code`);
+    }
+
+    const tokens = await googleAuthService.getTokens(code);
+    const userInfo = await googleAuthService.getUserInfo(tokens.access_token);
+
+    const user = await googleAuthService.createOrUpdateUser(
+      userInfo,
+      tokens
+    );
+
+    const jwtToken = googleAuthService.generateJWT(user._id);
+
+    res.redirect(
+      `${frontendUrl}/login/callback?token=${jwtToken}&user=${encodeURIComponent(
+        JSON.stringify({
+          id: user._id,
+          email: user.email,
+          name: user.name,
+          picture: user.picture,
+        })
+      )}`
+    );
+  })
+);
+
+/**
+ * @route   POST /api/auth/google/callback
+ * @desc    Google OAuth callback (API-based)
+ * @access  Public
  */
 router.post(
   '/google/callback',
   body('code').notEmpty().withMessage('Authorization code is required'),
   asyncHandler(async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      throw new AppError('Validation failed', 400);
-    }
+    handleValidation(req);
 
     const { code } = req.body;
 
     const tokens = await googleAuthService.getTokens(code);
     const userInfo = await googleAuthService.getUserInfo(tokens.access_token);
-    const user = await googleAuthService.createOrUpdateUser(userInfo, tokens);
+
+    const user = await googleAuthService.createOrUpdateUser(
+      userInfo,
+      tokens
+    );
 
     const jwtToken = googleAuthService.generateJWT(user._id);
 
-    res.json({
+    res.status(200).json({
       token: jwtToken,
       user: {
         id: user._id,
         email: user.email,
         name: user.name,
-        picture: user.picture
-      }
+        picture: user.picture,
+      },
+    });
+  })
+);
+
+/* =====================================================
+   OPTIONAL: EMAIL / PASSWORD AUTH (SECURE)
+   (Uses hashed password from User model)
+===================================================== */
+
+/**
+ * @route   POST /api/auth/register
+ * @desc    Register user with email & password
+ * @access  Public
+ */
+router.post(
+  '/register',
+  body('email').isEmail(),
+  body('name').notEmpty(),
+  body('password').isLength({ min: 8 }),
+  asyncHandler(async (req, res) => {
+    handleValidation(req);
+
+    const { email, name, password } = req.body;
+
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      throw new AppError('User already exists', 409);
+    }
+
+    // IMPORTANT:
+    // Password will be hashed automatically via pre-save hook
+    const user = await User.create({
+      email,
+      name,
+      password,
+    });
+
+    res.status(201).json({
+      message: 'User registered successfully',
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+      },
     });
   })
 );
 
 /**
- * Get Current User Profile
+ * @route   POST /api/auth/login
+ * @desc    Login using email & password
+ * @access  Public
  */
-router.get('/profile', authMiddleware, asyncHandler(async (req, res) => {
-  res.json({
-    user: {
-      id: req.user._id,
-      email: req.user.email,
-      name: req.user.name,
-      picture: req.user.picture,
-      preferences: req.user.preferences,
-      lastEmailScan: req.user.lastEmailScan
+router.post(
+  '/login',
+  body('email').isEmail(),
+  body('password').notEmpty(),
+  asyncHandler(async (req, res) => {
+    handleValidation(req);
+
+    const { email, password } = req.body;
+
+    // Explicitly select password for comparison
+    const user = await User.findOne({ email }).select('+password');
+
+    if (!user) {
+      throw new AppError('Invalid credentials', 401);
     }
-  });
-}));
+
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      throw new AppError('Invalid credentials', 401);
+    }
+
+    const jwtToken = googleAuthService.generateJWT(user._id);
+
+    res.status(200).json({
+      token: jwtToken,
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+      },
+    });
+  })
+);
+
+/* =====================================================
+   USER PROFILE & SETTINGS
+===================================================== */
 
 /**
- * Update User Preferences
+ * @route   GET /api/auth/profile
+ * @desc    Get current user profile
+ * @access  Private
+ */
+router.get(
+  '/profile',
+  authMiddleware,
+  asyncHandler(async (req, res) => {
+    res.status(200).json({
+      user: {
+        id: req.user._id,
+        email: req.user.email,
+        name: req.user.name,
+        picture: req.user.picture,
+        preferences: req.user.preferences,
+        lastEmailScan: req.user.lastEmailScan,
+      },
+    });
+  })
+);
+
+/**
+ * @route   PATCH /api/auth/preferences
+ * @desc    Update user preferences
+ * @access  Private
  */
 router.patch(
   '/preferences',
   authMiddleware,
-  body('scanFrequency').optional().isIn(['daily', 'weekly', 'monthly', 'manual']),
+  body('scanFrequency')
+    .optional()
+    .isIn(['daily', 'weekly', 'monthly', 'manual']),
   body('emailCategories').optional().isArray(),
   body('notifications').optional().isBoolean(),
   asyncHandler(async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      throw new AppError('Validation failed', 400);
-    }
+    handleValidation(req);
 
-    const { scanFrequency, emailCategories, notifications } = req.body;
     const user = req.user;
+    const { scanFrequency, emailCategories, notifications } = req.body;
 
     if (scanFrequency) user.preferences.scanFrequency = scanFrequency;
-    if (emailCategories) user.preferences.emailCategories = emailCategories;
-    if (notifications !== undefined) user.preferences.notifications = notifications;
+    if (emailCategories)
+      user.preferences.emailCategories = emailCategories;
+    if (notifications !== undefined)
+      user.preferences.notifications = notifications;
 
     await user.save();
 
-    res.json({
+    res.status(200).json({
       message: 'Preferences updated successfully',
-      preferences: user.preferences
+      preferences: user.preferences,
     });
   })
 );
 
-/**
- * Logout
- */
-router.post('/logout', authMiddleware, asyncHandler(async (req, res) => {
-  res.json({ message: 'Logged out successfully' });
-}));
+/* =====================================================
+   LOGOUT & REVOKE
+===================================================== */
 
 /**
- * Revoke Gmail Access Only
+ * @route   POST /api/auth/logout
+ * @desc    Logout user
+ * @access  Private
  */
-router.post('/revoke-gmail', authMiddleware, asyncHandler(async (req, res) => {
-  const revokeResult = await googleAuthService.revokeAllUserTokens(req.user._id);
-
-  res.json({
-    message: 'Gmail access revoked successfully. You can re-authenticate anytime.',
-    revokeResult
-  });
-}));
+router.post(
+  '/logout',
+  authMiddleware,
+  asyncHandler(async (req, res) => {
+    res.status(200).json({ message: 'Logged out successfully' });
+  })
+);
 
 /**
- * Revoke Account & All Data
+ * @route   DELETE /api/auth/revoke
+ * @desc    Revoke account & delete all data
+ * @access  Private
  */
-router.delete('/revoke', authMiddleware, asyncHandler(async (req, res) => {
-  const userId = req.user._id;
+router.delete(
+  '/revoke',
+  authMiddleware,
+  asyncHandler(async (req, res) => {
+    const userId = req.user._id;
 
-  try {
-    await googleAuthService.revokeAllUserTokens(userId);
-  } catch (err) {
-    console.error('Token revocation failed, continuing cleanup');
-  }
-
-  const Subscription = require('../models/Subscription');
-  const Email = require('../models/Email');
-
-  const deletedSubs = await Subscription.deleteMany({ userId });
-  const deletedEmails = await Email.deleteMany({ userId });
-
-  await req.user.deleteOne();
-
-  res.json({
-    message: 'Access revoked successfully. Account and data deleted.',
-    deletedData: {
-      subscriptions: deletedSubs.deletedCount,
-      emails: deletedEmails.deletedCount
+    try {
+      await googleAuthService.revokeAllUserTokens(userId);
+    } catch {
+      console.warn('Token revocation failed, continuing cleanup');
     }
-  });
-}));
+
+    const Subscription = require('../models/Subscription');
+    const Email = require('../models/Email');
+
+    const deletedSubs = await Subscription.deleteMany({ userId });
+    const deletedEmails = await Email.deleteMany({ userId });
+
+    await req.user.deleteOne();
+
+    res.status(200).json({
+      message: 'Account and all data deleted successfully',
+      deletedData: {
+        subscriptions: deletedSubs.deletedCount,
+        emails: deletedEmails.deletedCount,
+      },
+    });
+  })
+);
 
 module.exports = router;
