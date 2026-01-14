@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FiHome, FiMail, FiSettings, FiLogOut, FiMenu, FiX, FiUser, FiShield, FiGlobe } from 'react-icons/fi';
+import { FiHome, FiMail, FiSettings, FiLogOut, FiMenu, FiX, FiUser, FiShield, FiGlobe, FiMonitor } from 'react-icons/fi';
+import ThemeSwitcher from '../ThemeSwitcher/ThemeSwitcher';
+import NotificationCenter from './NotificationCenter/NotificationCenter';
 import './Navbar.css';
 
 const Navbar = () => {
@@ -78,6 +80,12 @@ const Navbar = () => {
             Settings
           </Link>
         </div>
+
+        {/* Theme Switcher */}
+        <ThemeSwitcher variant="compact" />
+
+        {/* Notification Center */}
+        <NotificationCenter />
 
         {/* User Menu */}
         <div className="navbar-user">
