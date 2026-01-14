@@ -1,5 +1,6 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
+const jwt = require('jsonwebtoken');
 
 const googleAuthService = require('../services/googleAuth');
 const { authMiddleware } = require('../middleware/auth');
@@ -11,8 +12,12 @@ const User = require('../models/User');
 const router = express.Router();
 
 /* =====================================================
-   Utility: Validation Error Handler
+   Helpers
 ===================================================== */
+
+/**
+ * Validate request body
+ */
 const handleValidation = (req) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -20,15 +25,27 @@ const handleValidation = (req) => {
   }
 };
 
-/* =====================================================
-   CSRF Marker Middleware
-   (Actual validation handled globally via csurf)
-===================================================== */
+/**
+ * Generate JWT Access Token
+ * This is the CORE of JWT authentication
+ */
+const generateAccessToken = (userId) => {
+  return jwt.sign(
+    { userId },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: process.env.JWT_EXPIRES_IN || '15m',
+    }
+  );
+};
+
+/**
+ * CSRF marker (actual validation handled globally)
+ */
 const requireCsrf = (req, res, next) => next();
 
 /* =====================================================
    GOOGLE OAUTH ROUTES (PUBLIC)
-   Mounted at: /api/v1/auth/*
 ===================================================== */
 
 /**
@@ -77,15 +94,13 @@ router.get(
 
     const tokens = await googleAuthService.getTokens(code);
     const userInfo = await googleAuthService.getUserInfo(tokens.access_token);
-    const user = await googleAuthService.createOrUpdateUser(
-      userInfo,
-      tokens
-    );
+    const user = await googleAuthService.createOrUpdateUser(userInfo, tokens);
 
-    const jwtToken = googleAuthService.generateJWT(user._id);
+    // ✅ JWT ACCESS TOKEN ISSUED
+    const accessToken = generateAccessToken(user._id);
 
     res.redirect(
-      `${frontendUrl}/login/callback?token=${jwtToken}&user=${encodeURIComponent(
+      `${frontendUrl}/login/callback?token=${accessToken}&user=${encodeURIComponent(
         JSON.stringify({
           id: user._id,
           email: user.email,
@@ -113,10 +128,11 @@ router.post(
       tokens
     );
 
-    const jwtToken = googleAuthService.generateJWT(user._id);
+    // ✅ JWT ACCESS TOKEN ISSUED
+    const accessToken = generateAccessToken(user._id);
 
     res.status(200).json({
-      token: jwtToken,
+      token: accessToken,
       user: {
         id: user._id,
         email: user.email,
@@ -128,7 +144,7 @@ router.post(
 );
 
 /* =====================================================
-   EMAIL / PASSWORD AUTH (CSRF PROTECTED)
+   EMAIL / PASSWORD AUTH (JWT BASED)
 ===================================================== */
 
 /**
@@ -151,8 +167,11 @@ router.post(
 
     const user = await User.create({ email, name, password });
 
+    // ✅ JWT ACCESS TOKEN ISSUED
+    const accessToken = generateAccessToken(user._id);
+
     res.status(201).json({
-      message: 'User registered successfully',
+      token: accessToken,
       user: {
         id: user._id,
         email: user.email,
@@ -181,10 +200,11 @@ router.post(
       throw new AppError('Invalid credentials', 401);
     }
 
-    const jwtToken = googleAuthService.generateJWT(user._id);
+    // ✅ JWT ACCESS TOKEN ISSUED
+    const accessToken = generateAccessToken(user._id);
 
     res.status(200).json({
-      token: jwtToken,
+      token: accessToken,
       user: {
         id: user._id,
         email: user.email,
@@ -195,7 +215,7 @@ router.post(
 );
 
 /* =====================================================
-   AUTHENTICATED USER ROUTES
+   PROTECTED ROUTES (JWT REQUIRED)
 ===================================================== */
 
 /**
@@ -206,13 +226,7 @@ router.get(
   authMiddleware,
   asyncHandler(async (req, res) => {
     res.status(200).json({
-      user: {
-        id: req.user._id,
-        email: req.user.email,
-        name: req.user.name,
-        picture: req.user.picture,
-        preferences: req.user.preferences,
-      },
+      user: req.user,
     });
   })
 );
@@ -237,13 +251,16 @@ router.patch(
 
 /**
  * POST /logout
+ * (JWT is stateless → client just deletes token)
  */
 router.post(
   '/logout',
   authMiddleware,
   requireCsrf,
   asyncHandler(async (req, res) => {
-    res.status(200).json({ message: 'Logged out successfully' });
+    res.status(200).json({
+      message: 'Logged out successfully',
+    });
   })
 );
 
@@ -255,10 +272,7 @@ router.delete(
   authMiddleware,
   requireCsrf,
   asyncHandler(async (req, res) => {
-    const userId = req.user._id;
-
-    await googleAuthService.revokeAllUserTokens(userId).catch(() => {});
-    await User.deleteOne({ _id: userId });
+    await User.deleteOne({ _id: req.user._id });
 
     res.status(200).json({
       message: 'Account and all data deleted successfully',
