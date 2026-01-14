@@ -6,7 +6,6 @@ const { authMiddleware } = require('../middleware/auth');
 
 const asyncHandler = require('../middleware/asyncHandler');
 const AppError = require('../errors/AppError');
-
 const User = require('../models/User');
 
 const router = express.Router();
@@ -22,56 +21,51 @@ const handleValidation = (req) => {
 };
 
 /* =====================================================
-   CSRF Helper Middleware
-   (Only applied to state-changing routes)
+   CSRF Marker Middleware
+   (Actual validation handled globally via csurf)
 ===================================================== */
-const requireCsrf = (req, res, next) => {
-  /**
-   * CSRF token is validated by csurf middleware
-   * This wrapper exists only for readability
-   */
-  next();
-};
+const requireCsrf = (req, res, next) => next();
 
 /* =====================================================
-   GOOGLE OAUTH FLOW (CSRF NOT REQUIRED)
+   GOOGLE OAUTH ROUTES (PUBLIC)
+   Mounted at: /api/v1/auth/*
 ===================================================== */
 
 /**
- * @route   GET /api/auth/google/url
- * @access  Public
+ * GET /google/url
  */
 router.get(
   '/google/url',
   asyncHandler(async (req, res) => {
-    const authUrl = googleAuthService.getAuthUrl();
-    res.status(200).json({ authUrl });
+    res.status(200).json({
+      authUrl: googleAuthService.getAuthUrl(),
+    });
   })
 );
 
 /**
- * @route   GET /api/auth/google/reauth-url
- * @access  Private
+ * GET /google/reauth-url
  */
 router.get(
   '/google/reauth-url',
   authMiddleware,
   asyncHandler(async (req, res) => {
     await googleAuthService.clearUserTokens(req.user._id);
-    const authUrl = googleAuthService.getAuthUrl();
-    res.status(200).json({ authUrl });
+    res.status(200).json({
+      authUrl: googleAuthService.getAuthUrl(),
+    });
   })
 );
 
 /**
- * @route   GET /api/auth/google/callback
- * @access  Public (Browser Redirect)
+ * GET /google/callback (Browser Redirect)
  */
 router.get(
   '/google/callback',
   asyncHandler(async (req, res) => {
     const { code, error } = req.query;
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const frontendUrl =
+      process.env.FRONTEND_URL || 'http://localhost:3000';
 
     if (error) {
       return res.redirect(`${frontendUrl}/login?error=${error}`);
@@ -83,7 +77,10 @@ router.get(
 
     const tokens = await googleAuthService.getTokens(code);
     const userInfo = await googleAuthService.getUserInfo(tokens.access_token);
-    const user = await googleAuthService.createOrUpdateUser(userInfo, tokens);
+    const user = await googleAuthService.createOrUpdateUser(
+      userInfo,
+      tokens
+    );
 
     const jwtToken = googleAuthService.generateJWT(user._id);
 
@@ -101,8 +98,7 @@ router.get(
 );
 
 /**
- * @route   POST /api/auth/google/callback
- * @access  Public API
+ * POST /google/callback (API)
  */
 router.post(
   '/google/callback',
@@ -112,7 +108,10 @@ router.post(
 
     const tokens = await googleAuthService.getTokens(req.body.code);
     const userInfo = await googleAuthService.getUserInfo(tokens.access_token);
-    const user = await googleAuthService.createOrUpdateUser(userInfo, tokens);
+    const user = await googleAuthService.createOrUpdateUser(
+      userInfo,
+      tokens
+    );
 
     const jwtToken = googleAuthService.generateJWT(user._id);
 
@@ -133,8 +132,7 @@ router.post(
 ===================================================== */
 
 /**
- * @route   POST /api/auth/register
- * @access  Public (CSRF Protected)
+ * POST /register
  */
 router.post(
   '/register',
@@ -151,7 +149,6 @@ router.post(
       throw new AppError('User already exists', 409);
     }
 
-    // Password hashing handled at model level
     const user = await User.create({ email, name, password });
 
     res.status(201).json({
@@ -166,8 +163,7 @@ router.post(
 );
 
 /**
- * @route   POST /api/auth/login
- * @access  Public (CSRF Protected)
+ * POST /login
  */
 router.post(
   '/login',
@@ -177,7 +173,10 @@ router.post(
   asyncHandler(async (req, res) => {
     handleValidation(req);
 
-    const user = await User.findOne({ email: req.body.email }).select('+password');
+    const user = await User.findOne({ email: req.body.email }).select(
+      '+password'
+    );
+
     if (!user || !(await user.comparePassword(req.body.password))) {
       throw new AppError('Invalid credentials', 401);
     }
@@ -196,17 +195,31 @@ router.post(
 );
 
 /* =====================================================
-   AUTHENTICATED USER ACTIONS (CSRF PROTECTED)
+   AUTHENTICATED USER ROUTES
 ===================================================== */
 
+/**
+ * GET /profile
+ */
 router.get(
   '/profile',
   authMiddleware,
   asyncHandler(async (req, res) => {
-    res.status(200).json({ user: req.user });
+    res.status(200).json({
+      user: {
+        id: req.user._id,
+        email: req.user.email,
+        name: req.user.name,
+        picture: req.user.picture,
+        preferences: req.user.preferences,
+      },
+    });
   })
 );
 
+/**
+ * PATCH /preferences
+ */
 router.patch(
   '/preferences',
   authMiddleware,
@@ -222,6 +235,9 @@ router.patch(
   })
 );
 
+/**
+ * POST /logout
+ */
 router.post(
   '/logout',
   authMiddleware,
@@ -231,6 +247,9 @@ router.post(
   })
 );
 
+/**
+ * DELETE /revoke
+ */
 router.delete(
   '/revoke',
   authMiddleware,
@@ -241,7 +260,9 @@ router.delete(
     await googleAuthService.revokeAllUserTokens(userId).catch(() => {});
     await User.deleteOne({ _id: userId });
 
-    res.status(200).json({ message: 'Account deleted successfully' });
+    res.status(200).json({
+      message: 'Account and all data deleted successfully',
+    });
   })
 );
 
