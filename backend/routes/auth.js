@@ -2,11 +2,17 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const googleAuthService = require('../services/googleAuth');
 const { authMiddleware } = require('../middleware/auth');
+const { 
+  authStrictLimiter, 
+  authModerateLimiter, 
+  loginAttemptTracker, 
+  wrapAuthResponse 
+} = require('../middleware/rateLimiter');
 
 const router = express.Router();
 
-// Get Google OAuth URL
-router.get('/google/url', (req, res) => {
+// Get Google OAuth URL - Apply strict rate limiting to prevent abuse
+router.get('/google/url', authStrictLimiter, loginAttemptTracker, wrapAuthResponse(async (req, res) => {
   try {
     const authUrl = googleAuthService.getAuthUrl();
     res.json({ authUrl });
@@ -14,10 +20,10 @@ router.get('/google/url', (req, res) => {
     console.error('Error generating auth URL:', error);
     res.status(500).json({ message: 'Failed to generate authentication URL' });
   }
-});
+}));
 
 // Get Google re-authorization URL (clears old tokens and forces new consent)
-router.get('/google/reauth-url', authMiddleware, async (req, res) => {
+router.get('/google/reauth-url', authMiddleware, authModerateLimiter, async (req, res) => {
   try {
     const userId = req.user._id;
     
@@ -32,8 +38,8 @@ router.get('/google/reauth-url', authMiddleware, async (req, res) => {
   }
 });
 
-// Handle Google OAuth callback (GET request from Google)
-router.get('/google/callback', async (req, res) => {
+// Handle Google OAuth callback (GET request from Google) - Critical endpoint with strict rate limiting
+router.get('/google/callback', authStrictLimiter, loginAttemptTracker, wrapAuthResponse(async (req, res) => {
   try {
     const { code, error } = req.query;
 
@@ -70,12 +76,12 @@ router.get('/google/callback', async (req, res) => {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(error.message || 'Authentication failed')}`);
   }
-});
+}));
 
-// Handle Google OAuth callback (POST request for API)
-router.post('/google/callback', [
+// Handle Google OAuth callback (POST request for API) - Critical endpoint with strict rate limiting
+router.post('/google/callback', authStrictLimiter, loginAttemptTracker, [
   body('code').notEmpty().withMessage('Authorization code is required')
-], async (req, res) => {
+], wrapAuthResponse(async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -114,10 +120,10 @@ router.post('/google/callback', [
       message: error.message || 'Authentication failed'
     });
   }
-});
+}));
 
-// Get current user profile
-router.get('/profile', authMiddleware, async (req, res) => {
+// Get current user profile - Moderate rate limiting for authenticated users
+router.get('/profile', authMiddleware, authModerateLimiter, async (req, res) => {
   try {
     res.json({
       user: {
@@ -135,9 +141,8 @@ router.get('/profile', authMiddleware, async (req, res) => {
   }
 });
 
-// Update user preferences
-router.patch('/preferences', [
-  authMiddleware,
+// Update user preferences - Moderate rate limiting
+router.patch('/preferences', authMiddleware, authModerateLimiter, [
   body('scanFrequency').optional().isIn(['daily', 'weekly', 'monthly', 'manual']),
   body('emailCategories').optional().isArray(),
   body('notifications').optional().isBoolean()
@@ -171,8 +176,8 @@ router.patch('/preferences', [
   }
 });
 
-// Logout (invalidate token on client side)
-router.post('/logout', authMiddleware, (req, res) => {
+// Logout (invalidate token on client side) - Moderate rate limiting
+router.post('/logout', authMiddleware, authModerateLimiter, (req, res) => {
   try {
     // In a more complex setup, you might want to maintain a blacklist of tokens
     // For now, we'll rely on the client to remove the token
@@ -183,8 +188,8 @@ router.post('/logout', authMiddleware, (req, res) => {
   }
 });
 
-// Revoke Gmail access only (keep account but clear Gmail tokens)
-router.post('/revoke-gmail', authMiddleware, async (req, res) => {
+// Revoke Gmail access only (keep account but clear Gmail tokens) - Strict rate limiting for security
+router.post('/revoke-gmail', authMiddleware, authStrictLimiter, async (req, res) => {
   try {
     const userId = req.user._id;
     
@@ -203,8 +208,8 @@ router.post('/revoke-gmail', authMiddleware, async (req, res) => {
   }
 });
 
-// Revoke access (revoke OAuth tokens and delete user account and data)
-router.delete('/revoke', authMiddleware, async (req, res) => {
+// Revoke access (revoke OAuth tokens and delete user account and data) - Strict rate limiting for critical operation
+router.delete('/revoke', authMiddleware, authStrictLimiter, async (req, res) => {
   try {
     const userId = req.user._id;
     
