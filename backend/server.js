@@ -6,8 +6,8 @@ const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 const csrf = require('csurf');
 require('dotenv').config();
-const apiDeprecationMiddleware = require('./middleware/apiDeprecation.middleware');
 
+const apiDeprecationMiddleware = require('./middleware/apiDeprecation.middleware');
 
 /* ===============================
    Import Routes (Unversioned)
@@ -35,6 +35,8 @@ app.use(
     crossOriginResourcePolicy: false,
   })
 );
+
+/* API Deprecation Headers */
 app.use('/api', apiDeprecationMiddleware);
 
 /* ===============================
@@ -46,8 +48,9 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: {
-    statusCode: 429,
-    error: 'Too many requests from this IP, please try again later.',
+    success: false,
+    errorCode: 'TOO_MANY_REQUESTS',
+    message: 'Too many requests from this IP, please try again later.',
   },
 });
 app.use(limiter);
@@ -100,10 +103,6 @@ app.get('/api/v1/csrf-token', csrfProtection, (req, res) => {
 /* ===============================
    API VERSIONING SETUP
 ================================ */
-/**
- * All current APIs are exposed under /api/v1
- * Future versions (v2, v3...) can coexist safely
- */
 const v1Router = express.Router();
 
 /* Apply CSRF only to versioned APIs */
@@ -123,23 +122,18 @@ v1Router.use('/surface', surfaceRoutes);
 app.use('/api/v1', v1Router);
 
 /* ===============================
-   Backward Compatibility (Optional)
-   Redirect old /api/* → /api/v1/*
+   Backward Compatibility
 ================================ */
-/**
- * This ensures existing clients don’t break immediately.
- * Can be removed in future after deprecation period.
- */
 app.use('/api', (req, res) => {
   res.status(410).json({
-    message:
-      'Unversioned API is deprecated. Please use /api/v1/* endpoints.',
+    success: false,
+    errorCode: 'API_DEPRECATED',
+    message: 'Unversioned API is deprecated. Please use /api/v1/* endpoints.',
   });
 });
 
 /* ===============================
    Health & Status Routes
-   (Non-versioned, public)
 ================================ */
 app.get('/health', (req, res) => {
   res.status(200).json({
@@ -163,6 +157,7 @@ app.get('/api/status', (req, res) => {
 app.use((req, res) => {
   res.status(404).json({
     success: false,
+    errorCode: 'ROUTE_NOT_FOUND',
     message: `Route ${req.originalUrl} not found`,
   });
 });
@@ -176,12 +171,14 @@ app.use((err, req, res, next) => {
   if (err.code === 'EBADCSRFTOKEN') {
     return res.status(403).json({
       success: false,
+      errorCode: 'CSRF_TOKEN_INVALID',
       message: 'Invalid or missing CSRF token',
     });
   }
 
   res.status(err.statusCode || 500).json({
     success: false,
+    errorCode: err.errorCode || 'INTERNAL_SERVER_ERROR',
     message: err.message || 'Internal Server Error',
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });

@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 
 const googleAuthService = require('../services/googleAuth');
 const { authMiddleware } = require('../middleware/auth');
+const ERROR_CODES = require('../config/errorCodes');
 
 const asyncHandler = require('../middleware/asyncHandler');
 const AppError = require('../errors/AppError');
@@ -21,7 +22,12 @@ const handleValidation = (req) => {
     throw new AppError('Validation failed', 400);
   }
 };
-
+// Example
+throw new AppError(
+  'Invalid credentials',
+  401,
+  ERROR_CODES.AUTH_INVALID_CREDENTIALS
+);
 const generateAccessToken = (userId) => {
   return jwt.sign(
     { userId },
