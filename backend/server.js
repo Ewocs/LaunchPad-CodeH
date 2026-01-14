@@ -6,6 +6,8 @@ const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 const csrf = require('csurf');
 require('dotenv').config();
+const apiDeprecationMiddleware = require('./middleware/apiDeprecation.middleware');
+
 
 /* ===============================
    Import Routes (Unversioned)
@@ -33,6 +35,7 @@ app.use(
     crossOriginResourcePolicy: false,
   })
 );
+app.use('/api', apiDeprecationMiddleware);
 
 /* ===============================
    Rate Limiting
