@@ -13,6 +13,7 @@ const emailRoutes = require('./routes/emails');
 const subscriptionRoutes = require('./routes/subscriptions');
 const breachCheckRoutes = require('./routes/breachCheck');
 const surfaceRoutes = require('./routes/surface');
+const securityRoutes = require('./routes/security');
 const MigrationService = require('./services/migrationService');
 
 /* ===============================
@@ -94,6 +95,7 @@ app.use('/api/emails', emailRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/breach-check', breachCheckRoutes);
 app.use('/api/surface', surfaceRoutes);
+app.use('/api/security', securityRoutes);
 
 /* ===============================
    Health & Status Routes
