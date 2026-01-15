@@ -185,10 +185,6 @@ class GmailService {
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - daysBack);
 
-      // Fetch user preferences for Whitelist/Blacklist
-      const user = await User.findById(userId).select('preferences.whitelist preferences.blacklist');
-      const { whitelist = [], blacklist = [] } = user?.preferences || {};
-
       // SMART APPROACH: Use targeted queries for faster results
       console.log('📧 Using targeted company extraction queries...');
       const emails = await this.getCompanyEmailsEfficiently(userId, cutoffDate);
