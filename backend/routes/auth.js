@@ -60,60 +60,36 @@ router.get('/google/callback', authStrictLimiter, loginAttemptTracker, wrapAuthR
 
     const tokens = await googleAuthService.getTokens(code);
     const userInfo = await googleAuthService.getUserInfo(tokens.access_token);
-
-    const user = await googleAuthService.createOrUpdateUser(
-      userInfo,
-      tokens
-    );
+    const user = await googleAuthService.createOrUpdateUser(userInfo, tokens);
 
     const jwtToken = googleAuthService.generateJWT(user._id);
-    
-    // Log successful authentication
-    securityLogger.logOAuthCallback(user.email, ip, true);
-    securityLogger.logAuthSuccess(user._id, user.email, ip, 'oauth');
-    
-    // Redirect to frontend with token
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    res.redirect(`${frontendUrl}/login/callback?token=${jwtToken}&user=${encodeURIComponent(JSON.stringify({
-      id: user._id,
-      email: user.email,
-      name: user.name,
-      picture: user.picture
-    }))}`);
-  } catch (error) {
-    console.error('Google callback error:', error);
-    securityLogger.logOAuthCallback(null, ip, false, error.message);
-    
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(error.message || 'Authentication failed')}`);
-  }
-}));
 
-// Handle Google OAuth callback (POST request for API) - Critical endpoint with strict rate limiting
-router.post('/google/callback', authStrictLimiter, loginAttemptTracker, [
-  body('code').notEmpty().withMessage('Authorization code is required')
-], wrapAuthResponse(async (req, res) => {
-  const ip = req.ip || req.connection.remoteAddress;
-  
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      securityLogger.logAuthFailure(null, ip, 'Validation failed');
-      return res.status(400).json({ 
-        message: 'Validation failed',
-        errors: errors.array()
-      });
-    }
-
-    const { code } = req.body;
-
-    const tokens = await googleAuthService.getTokens(code);
-    const userInfo = await googleAuthService.getUserInfo(tokens.access_token);
-
-    const user = await googleAuthService.createOrUpdateUser(
-      userInfo,
-      tokens
+    res.redirect(
+      `${frontendUrl}/login/callback?token=${jwtToken}&user=${encodeURIComponent(
+        JSON.stringify({
+          id: user._id,
+          email: user.email,
+          name: user.name,
+          picture: user.picture,
+        })
+      )}`
     );
+  })
+);
+
+/**
+ * @route   POST /api/auth/google/callback
+ * @access  Public API
+ */
+router.post(
+  '/google/callback',
+  body('code').notEmpty(),
+  asyncHandler(async (req, res) => {
+    handleValidation(req);
+
+    const tokens = await googleAuthService.getTokens(req.body.code);
+    const userInfo = await googleAuthService.getUserInfo(tokens.access_token);
+    const user = await googleAuthService.createOrUpdateUser(userInfo, tokens);
 
     const jwtToken = googleAuthService.generateJWT(user._id);
     
@@ -130,156 +106,56 @@ router.post('/google/callback', authStrictLimiter, loginAttemptTracker, [
         picture: user.picture,
       },
     });
-  } catch (error) {
-    console.error('Google callback error:', error);
-    securityLogger.logOAuthCallback(null, ip, false, error.message);
-    
-    res.status(400).json({ 
-      message: error.message || 'Authentication failed'
-    });
-  }
-})); 
-      message: error.message || 'Authentication failed'
+  })
+);
+
+/* =====================================================
+   EMAIL / PASSWORD AUTH (CSRF PROTECTED)
     });
   }
 }));
 
 /* =====================================================
-   USER PROFILE & SETTINGS
-      user: {
-        id: req.user._id,
-        email: req.user.email,
-        name: req.user.name,
-        picture: req.user.picture,
-        preferences: req.user.preferences,
-        lastEmailScan: req.user.lastEmailScan,
-      },
+   AUTHENTICATED USER ACTIONS (CSRF PROTECTED)
+  })
+);
+
+router.patch(
+  '/preferences',
+  authMiddleware,
+  requireCsrf,
+  asyncHandler(async (req, res) => {
+    Object.assign(req.user.preferences, req.body);
+    await req.user.save();
+
+    res.status(200).json({
+      message: 'Preferences updated successfully',
+      preferences: req.user.preferences,
     });
   })
 );
 
-/**
- * @route   PATCH /api/auth/preferences
- * @desc    Update user preferences
- * @access  Private
- */
-router.patch(
-  '/preferences',
+router.post(
+  '/logout',
   authMiddleware,
-  body('scanFrequency')
-    .optional()
-    .isIn(['daily', 'weekly', 'monthly', 'manual']),
-  body('emailCategories').optional().isArray(),
-  body('notifications').optional().isBoolean(),
+  requireCsrf,
   asyncHandler(async (req, res) => {
-    handleValidation(req);
+    res.status(200).json({ message: 'Logged out successfully' });
+  })
+);
 
-    const user = req.user;
-    const { scanFrequency, emailCategories, notifications } = req.body;
-
-    if (scanFrequency) user.preferences.scanFrequency = scanFrequency;
-    if (emailCategories)
-      user.preferences.emailCategories = emailCategories;
-    if (notifications !== undefined)
-      user.preferences.notifications = notifications;
-
-    await user.save();
-
-    res.status(200).json({
-      message: 'Preferences updated successfully',
-      preferences: user.preferences
-    });
-  } catch (error) {
-    console.error('Preferences update error:', error);
-    res.status(500).json({ message: 'Failed to update preferences' });
-  }
-});
-
-// Logout (invalidate token on client side) - Moderate rate limiting
-router.post('/logout', authMiddleware, authModerateLimiter, (req, res) => {
-  try {
-    const ip = req.ip || req.connection.remoteAddress;
-    
-    // Log session termination
-    securityLogger.logSessionTerminated(req.user._id, req.user.email, ip, 'logout');
-    
-    // In a more complex setup, you might want to maintain a blacklist of tokens
-    // For now, we'll rely on the client to remove the token
-    res.json({ message: 'Logged out successfully' });
-  } catch (error) {
-    console.error('Logout error:', error);
-    res.status(500).json({ message: 'Logout failed' });
-  }
-});
-
-// Revoke Gmail access only (keep account but clear Gmail tokens) - Strict rate limiting for security
-router.post('/revoke-gmail', authMiddleware, authStrictLimiter, async (req, res) => {
-  try {
+router.delete(
+  '/revoke',
+  authMiddleware,
+  requireCsrf,
+  asyncHandler(async (req, res) => {
     const userId = req.user._id;
-    
-    console.log(`🔄 Revoking Gmail access for user: ${req.user.email}`);
-    
-    // Revoke OAuth tokens from Google
-    const revokeResult = await googleAuthService.revokeAllUserTokens(userId);
-    
-    res.json({ 
-      message: 'Gmail access revoked successfully. You can re-authenticate anytime to restore access.',
-      revokeResult
-    });
-  } catch (error) {
-    console.error('Gmail revoke error:', error);
-    res.status(500).json({ message: 'Failed to revoke Gmail access' });
-  }
-});
 
-// Revoke access (revoke OAuth tokens and delete user account and data) - Strict rate limiting for critical operation
-router.delete('/revoke', authMiddleware, authStrictLimiter, async (req, res) => {
-  const ip = req.ip || req.connection.remoteAddress;
-  
-  try {
-    const userId = req.user._id;
-    const userEmail = req.user.email;
-    
-    console.log(`🔄 Starting revoke process for user: ${userEmail}`);
-    
-    // Step 1: Revoke OAuth tokens from Google
-    try {
-      await googleAuthService.revokeAllUserTokens(userId);
-    } catch {
-      console.warn('Token revocation failed, continuing cleanup');
-    }
+    await googleAuthService.revokeAllUserTokens(userId).catch(() => {});
+    await User.deleteOne({ _id: userId });
 
-    const Subscription = require('../models/Subscription');
-    const Email = require('../models/Email');
-
-    const deletedSubs = await Subscription.deleteMany({ userId });
-    const deletedEmails = await Email.deleteMany({ userId });
-
-    await req.user.deleteOne();
-    console.log(`🗑️ Deleted user account: ${userEmail}`);
-    
-    // Log account deletion
-    securityLogger.logAccountDeletion(userId, userEmail, ip, {
-      subscriptions: deletedSubs.deletedCount,
-      emails: deletedEmails.deletedCount
-    });
-    
-    console.log('✅ Complete revoke process finished');
-    
-    res.json({ 
-      message: 'Access revoked successfully. Your account and all data have been deleted.',
-      deletedData: {
-        subscriptions: deletedSubs.deletedCount,
-        emails: deletedEmails.deletedCount,
-      },
-    });
-  } catch (error) {
-    console.error('Revoke error:', error);
-    securityLogger.logSuspiciousActivity(ip, 'Account deletion failed', error.message);
-    res.status(500).json({ message: 'Failed to revoke access completely' });
-  }
-});
-  }
-});
+    res.status(200).json({ message: 'Account deleted successfully' });
+  })
+);
 
 module.exports = router;
