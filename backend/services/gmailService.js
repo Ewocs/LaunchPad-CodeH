@@ -3,6 +3,7 @@ const axios = require('axios');
 const Email = require('../models/Email');
 const Subscription = require('../models/Subscription');
 const googleAuthService = require('./googleAuth');
+const phishingScanner = require('./phishingScanner');
 
 class GmailService {
   constructor() {
@@ -12,16 +13,16 @@ class GmailService {
   async initializeGmail(userId) {
     try {
       const accessToken = await googleAuthService.getValidAccessToken(userId);
-      
+
       const oauth2Client = new google.auth.OAuth2(
         process.env.GOOGLE_CLIENT_ID,
         process.env.GOOGLE_CLIENT_SECRET,
         process.env.GOOGLE_REDIRECT_URI
       );
-      
+
       oauth2Client.setCredentials({ access_token: accessToken });
       this.gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-      
+
       return true;
     } catch (error) {
       console.error('Failed to initialize Gmail API:', error);
@@ -73,37 +74,37 @@ class GmailService {
       };
     } catch (error) {
       console.error('Error getting emails:', error);
-      
+
       // Check for insufficient permissions (403) - includes metadata scope issues
       if (error.status === 403 || error.code === 403) {
         const errorMessage = error.message || '';
         const responseMessage = error.response?.data?.error?.message || '';
         const errorArray = error.errors?.[0]?.message || '';
-        
+
         // Check for various permission-related errors
         const permissionErrors = [
           'Insufficient Permission',
-          'insufficientPermissions', 
+          'insufficientPermissions',
           "Metadata scope does not support 'q' parameter",
           'PERMISSION_DENIED'
         ];
-        
-        const hasPermissionError = permissionErrors.some(errorText => 
-          errorMessage.includes(errorText) || 
-          responseMessage.includes(errorText) || 
+
+        const hasPermissionError = permissionErrors.some(errorText =>
+          errorMessage.includes(errorText) ||
+          responseMessage.includes(errorText) ||
           errorArray.includes(errorText)
         );
-        
+
         if (hasPermissionError) {
           throw new Error('GMAIL_REAUTH_REQUIRED');
         }
       }
-      
+
       // Check if it's an authentication error
       if (error.status === 401 || error.code === 401) {
         throw new Error('Gmail authentication failed. Please re-authorize the application.');
       }
-      
+
       throw new Error('Failed to fetch emails from Gmail');
     }
   }
@@ -126,10 +127,10 @@ class GmailService {
 
       const fromHeader = getHeader('From');
       const fromMatch = fromHeader.match(/([^<]+)?<([^>]+)>/);
-      
+
       let fromName = '';
       let fromEmail = '';
-      
+
       if (fromMatch) {
         fromName = fromMatch[1] ? fromMatch[1].trim().replace(/"/g, '') : '';
         fromEmail = fromMatch[2];
@@ -179,31 +180,31 @@ class GmailService {
   async scanForSubscriptions(userId, daysBack = 90) {
     try {
       console.log(`🔍 Starting SMART email scan for user ${userId} (${daysBack} days back)`);
-      
+
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - daysBack);
-      
+
       // SMART APPROACH: Use targeted queries for faster results
       console.log('📧 Using targeted company extraction queries...');
       const emails = await this.getCompanyEmailsEfficiently(userId, cutoffDate);
-      
+
       console.log(`✅ Found ${emails.length} company emails to process`);
-      
+
       // Process emails in smaller batches for better performance
       const processedEmails = [];
       const uniqueCompanies = new Set();
       const batchSize = 20; // Process 20 emails at a time
-      
+
       for (let i = 0; i < emails.length; i += batchSize) {
         const batch = emails.slice(i, i + batchSize);
-        console.log(`🔄 Processing batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(emails.length/batchSize)} (${batch.length} emails)`);
-        
+        console.log(`🔄 Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(emails.length / batchSize)} (${batch.length} emails)`);
+
         for (const emailData of batch) {
           try {
             const email = await this.processAndStoreEmail(userId, emailData);
             if (email) {
               processedEmails.push(email);
-              
+
               // Extract company info
               if (email.processingResults?.extractedService?.domain) {
                 uniqueCompanies.add(email.processingResults.extractedService.domain);
@@ -213,12 +214,12 @@ class GmailService {
             console.error('Error processing email:', error.message);
           }
         }
-        
+
         // Small delay between batches
         if (i + batchSize < emails.length) {
           await this.delay(500);
         }
-        
+
         console.log(`📊 Progress: ${Math.min(i + batchSize, emails.length)}/${emails.length} emails | Found ${uniqueCompanies.size} companies`);
       }
 
@@ -226,12 +227,12 @@ class GmailService {
       return processedEmails;
     } catch (error) {
       console.error('Error scanning for subscriptions:', error);
-      
+
       // Preserve specific reauth error
       if (error.message === 'GMAIL_REAUTH_REQUIRED') {
         throw error;
       }
-      
+
       throw new Error('Failed to scan emails for subscriptions');
     }
   }
@@ -239,47 +240,47 @@ class GmailService {
   // NEW METHOD: Efficient company email extraction
   async getCompanyEmailsEfficiently(userId, cutoffDate) {
     const allEmails = [];
-    
+
     // Targeted queries that specifically look for company emails
     const companyQueries = [
       // No-reply addresses (most companies use these)
       'from:no-reply OR from:noreply OR from:"do-not-reply"',
-      
+
       // Common service domains
       'from:amazonaws.com OR from:github.com OR from:google.com OR from:microsoft.com',
       'from:stripe.com OR from:paypal.com OR from:mongodb.com OR from:railway.app',
       'from:replit.com OR from:vercel.com OR from:netlify.com OR from:heroku.com',
-      
+
       // Business email patterns
       'from:hello OR from:support OR from:team OR from:info OR from:updates',
-      
+
       // Newsletter and notification patterns
       'newsletter OR notification OR "account created" OR billing OR invoice'
     ];
-    
+
     for (let i = 0; i < companyQueries.length; i++) {
       const query = companyQueries[i];
       console.log(`📧 Query ${i + 1}/${companyQueries.length}: ${query.substring(0, 40)}...`);
-      
+
       try {
         const result = await this.getEmails(userId, `${query} after:${this.formatDateForGmail(cutoffDate)}`, 100);
         const emails = result.emails || result; // Handle both old and new return formats
-        
+
         allEmails.push(...emails);
         console.log(`✅ Found ${emails.length} emails`);
-        
+
         // Short delay between queries
         await this.delay(300);
-        
+
       } catch (error) {
         console.error(`❌ Error with query ${i + 1}:`, error.message);
       }
     }
-    
+
     // Remove duplicates
     const uniqueEmails = this.removeDuplicateEmails(allEmails);
     console.log(`🔄 Found ${uniqueEmails.length} unique emails from ${allEmails.length} total`);
-    
+
     return uniqueEmails;
   }
 
@@ -289,41 +290,41 @@ class GmailService {
     let pageToken = null;
     let pageCount = 0;
     const maxPages = 50; // Safety limit to prevent infinite loops
-    
+
     try {
       do {
         pageCount++;
         console.log(`📄 Fetching page ${pageCount}...`);
-        
+
         // Get emails without any query to get EVERYTHING
         const result = await this.getEmails(userId, '', 500, pageToken);
         const pageEmails = result.emails;
-        
+
         // Filter by date if cutoff is specified
         const filteredEmails = pageEmails.filter(email => {
           return !cutoffDate || email.receivedDate >= cutoffDate;
         });
-        
+
         allEmails.push(...filteredEmails);
         pageToken = result.nextPageToken;
-        
+
         console.log(`📧 Page ${pageCount}: ${filteredEmails.length}/${pageEmails.length} emails (after date filter)`);
         console.log(`📊 Total emails collected: ${allEmails.length}`);
-        
+
         // Add delay to respect rate limits (reduced from 1000ms)
         await this.delay(250);
-        
+
         // Safety break
         if (pageCount >= maxPages) {
           console.log(`⚠️ Reached maximum page limit (${maxPages}). Stopping scan.`);
           break;
         }
-        
+
       } while (pageToken);
-      
+
       console.log(`🎯 Total emails collected from ${pageCount} pages: ${allEmails.length}`);
       return allEmails;
-      
+
     } catch (error) {
       console.error('Error in getAllEmailsPaginated:', error);
       console.log(`📊 Returning ${allEmails.length} emails collected before error`);
@@ -341,7 +342,7 @@ class GmailService {
 
       // Analyze email content
       const analysis = await this.analyzeEmailContent(emailData);
-      
+
       // Create email record
       // Validate analysis data
       const cleanAnalysis = {
@@ -388,20 +389,20 @@ class GmailService {
   async analyzeEmailContent(emailData) {
     try {
       const text = `${emailData.subject} ${emailData.snippet} ${emailData.body}`.toLowerCase();
-      
+
       // Extract and consolidate domain from sender
       const originalDomain = emailData.from.email.split('@')[1];
       const consolidatedDomain = this.consolidateDomain(originalDomain);
-      
+
       // Determine category based on keywords
       const category = this.categorizeEmail(text);
-      
+
       // Extract service information using consolidated domain
       const serviceName = this.extractServiceName(emailData.from.email, emailData.subject, emailData.from.name);
-      
+
       // Extract URLs
       const urls = this.extractUrls(emailData.body);
-      
+
       // Get keywords
       const keywords = this.extractKeywords(text);
 
@@ -460,15 +461,15 @@ class GmailService {
   // Dynamic domain consolidation - intelligently groups subdomains to main domains
   consolidateDomain(domain) {
     if (!domain) return domain;
-    
+
     const lowerDomain = domain.toLowerCase();
-    
+
     // Skip personal email providers (don't consolidate these)
     const personalProviders = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'live.com', 'icloud.com'];
     if (personalProviders.includes(lowerDomain)) {
       return lowerDomain;
     }
-    
+
     // Special cases for known patterns
     if (lowerDomain.includes('amazonaws.com') || lowerDomain.includes('.aws')) {
       return 'amazonaws.com'; // All AWS services -> amazonaws.com
@@ -476,15 +477,15 @@ class GmailService {
     if (lowerDomain.includes('googlemail.com') || lowerDomain.includes('accounts.google.com')) {
       return 'google.com'; // Google services -> google.com  
     }
-    
+
     // Smart subdomain detection and consolidation
     const parts = lowerDomain.split('.');
-    
+
     if (parts.length >= 3) {
       // For domains like mail.company.com, news.company.com -> company.com
       // Take the last two meaningful parts
       const potentialRoot = parts.slice(-2).join('.');
-      
+
       // Common subdomain patterns that should be consolidated
       const commonSubdomains = [
         'mail', 'email', 'noreply', 'no-reply', 'donotreply', 'do-not-reply',
@@ -497,27 +498,27 @@ class GmailService {
         'www', 'web', 'portal', 'dashboard', 'console',
         'signup', 'login', 'auth', 'reply', 'email2'
       ];
-      
+
       const subdomain = parts[0];
-      
+
       // If it's a common subdomain pattern, use the root domain
       if (commonSubdomains.includes(subdomain)) {
         return potentialRoot;
       }
-      
+
       // For AWS-style domains (service.region.amazonaws.com -> amazonaws.com)
       if (parts.length >= 4 && parts[parts.length - 2] === 'amazonaws') {
         return 'amazonaws.com';
       }
-      
+
       // For other complex subdomains, check if subdomain looks generic
-      if (subdomain.length <= 4 || 
-          /^[a-z]{1,3}[0-9]*$/.test(subdomain) || // Short codes like 'us', 'eu', 'api1'
-          /^(www|app|web|mail|email|e)$/.test(subdomain)) {
+      if (subdomain.length <= 4 ||
+        /^[a-z]{1,3}[0-9]*$/.test(subdomain) || // Short codes like 'us', 'eu', 'api1'
+        /^(www|app|web|mail|email|e)$/.test(subdomain)) {
         return potentialRoot;
       }
     }
-    
+
     return lowerDomain;
   }
 
@@ -527,24 +528,24 @@ class GmailService {
     const originalDomain = emailAddress.split('@')[1];
     const consolidatedDomain = this.consolidateDomain(originalDomain);
     const domainParts = consolidatedDomain.split('.');
-    
+
     // Try to extract from "from" name first (most reliable)
     if (fromName && fromName.length > 0 && !fromName.includes('@')) {
       // Clean up the from name
       let cleanName = fromName.replace(/['"<>]/g, '').trim();
-      
+
       // Remove common words but keep meaningful content
       const removeWords = ['team', 'support', 'no-reply', 'noreply', 'info', 'hello', 'hi'];
       removeWords.forEach(word => {
         const regex = new RegExp(`\\b${word}\\b`, 'gi');
         cleanName = cleanName.replace(regex, '').trim();
       });
-      
+
       if (cleanName && cleanName.length > 1) {
         return this.capitalizeServiceName(cleanName);
       }
     }
-    
+
     // Extract from subject line if it contains company indicators
     if (subject) {
       // Look for patterns like "Welcome to [Company]", "[Company] Update", etc.
@@ -554,28 +555,28 @@ class GmailService {
         /^([^-]+) -/i,
         /\[([^\]]+)\]/i
       ];
-      
+
       for (const pattern of subjectPatterns) {
         const match = subject.match(pattern);
         if (match && match[1] && match[1].trim().length > 1) {
           const extracted = match[1].trim();
-          if (!extracted.toLowerCase().includes('email') && 
-              !extracted.toLowerCase().includes('mail') &&
-              extracted.length < 30) {
+          if (!extracted.toLowerCase().includes('email') &&
+            !extracted.toLowerCase().includes('mail') &&
+            extracted.length < 30) {
             return this.capitalizeServiceName(extracted);
           }
         }
       }
     }
-    
+
     // Extract from domain (last resort)
     // Remove common email service domains and generic domains
     const excludeDomains = ['gmail', 'yahoo', 'hotmail', 'outlook', 'mail', 'email', 'com', 'net', 'org', 'co', 'io'];
-    let serviceName = domainParts.find(part => 
-      !excludeDomains.includes(part.toLowerCase()) && 
+    let serviceName = domainParts.find(part =>
+      !excludeDomains.includes(part.toLowerCase()) &&
       part.length > 2
     );
-    
+
     if (!serviceName && domainParts.length > 0) {
       serviceName = domainParts[0];
     }
@@ -601,27 +602,27 @@ class GmailService {
       'sdk': 'SDK',
       'crm': 'CRM'
     };
-    
+
     const lowerName = name.toLowerCase();
     if (specialCases[lowerName]) {
       return specialCases[lowerName];
     }
-    
+
     // Clean up service name
     let cleanName = name.replace(/[^a-zA-Z0-9\s]/g, ' ')
-                       .replace(/\s+/g, ' ')
-                       .trim();
-    
+      .replace(/\s+/g, ' ')
+      .trim();
+
     // Capitalize each word
     return cleanName.split(' ')
-                   .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-                   .join(' ');
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
   }
 
   extractUrls(text) {
     const urlRegex = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/g;
     const urls = text.match(urlRegex) || [];
-    
+
     return {
       unsubscribe: urls.filter(url => url.toLowerCase().includes('unsubscribe')),
       revoke: urls.filter(url => url.toLowerCase().includes('revoke') || url.toLowerCase().includes('remove')),
@@ -632,7 +633,7 @@ class GmailService {
   extractKeywords(text) {
     const keywords = [];
     const commonKeywords = [
-      'subscription', 'newsletter', 'unsubscribe', 'verify', 'login', 
+      'subscription', 'newsletter', 'unsubscribe', 'verify', 'login',
       'signup', 'billing', 'payment', 'account', 'service', 'welcome'
     ];
 
@@ -658,15 +659,15 @@ class GmailService {
     };
 
     const keywords = categoryKeywords[category] || categoryKeywords['other'];
-    
+
     // Prevent division by zero
     if (keywords.length === 0) {
       return 0.2; // Default low confidence for unknown categories
     }
-    
+
     const matches = keywords.filter(keyword => text.includes(keyword)).length;
     const confidence = Math.min(matches / keywords.length * 0.8 + 0.2, 1.0);
-    
+
     // Ensure we return a valid number between 0 and 1
     return isNaN(confidence) ? 0.2 : Math.max(0, Math.min(1, confidence));
   }
@@ -723,13 +724,32 @@ class GmailService {
         subscription.lastEmailReceived = email.receivedDate;
         subscription.emailCount += 1;
         subscription.category = serviceInfo.category;
-        
+
         // Update service name if the new one is better (longer, more descriptive)
-        if (serviceName.length > subscription.serviceName.length && 
-            !serviceName.toLowerCase().includes('unknown')) {
+        if (serviceName.length > subscription.serviceName.length &&
+          !serviceName.toLowerCase().includes('unknown')) {
           subscription.serviceName = serviceName;
         }
-        
+
+        // Run Phishing Analysis
+        const phishingAnalysis = await phishingScanner.analyzeEmail({
+          sender: email.from.name ? `${email.from.name} <${email.from.email}>` : email.from.email,
+          subject: email.subject,
+          snippet: email.snippet,
+          links: [
+            ...(email.processingResults?.urls?.unsubscribe || []),
+            ...(email.processingResults?.urls?.revoke || []),
+            ...(email.processingResults?.urls?.manage || [])
+          ]
+        });
+
+        // Update security analysis if risk is higher or analysis is missing
+        if (!subscription.securityAnalysis ||
+          !subscription.securityAnalysis.lastAnalyzed ||
+          phishingAnalysis.riskScore > (subscription.securityAnalysis.riskScore || 0)) {
+          subscription.securityAnalysis = phishingAnalysis;
+        }
+
         console.log(`🔄 Updated subscription: ${subscription.serviceName} (${domain})`);
       } else {
         // Create new subscription - ensuring unique domain
@@ -752,14 +772,24 @@ class GmailService {
               subject: email.subject,
               snippet: email.snippet
             }
-          }
+          },
+          securityAnalysis: await phishingScanner.analyzeEmail({
+            sender: email.from.name ? `${email.from.name} <${email.from.email}>` : email.from.email,
+            subject: email.subject,
+            snippet: email.snippet,
+            links: [
+              ...(email.processingResults?.urls?.unsubscribe || []),
+              ...(email.processingResults?.urls?.revoke || []),
+              ...(email.processingResults?.urls?.manage || [])
+            ]
+          })
         });
-        
+
         console.log(`📝 Creating new subscription: ${serviceName} (${domain})`);
       }
 
       await subscription.save();
-      
+
       // Link email to subscription
       email.subscriptionId = subscription._id;
       await email.save();
