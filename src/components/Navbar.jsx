@@ -113,6 +113,14 @@ const Navbar = () => {
                   <p className="user-email">{user?.email}</p>
                 </div>
                 <Link
+                  to="/activity"
+                  className="user-menu-item"
+                  onClick={() => setIsUserMenuOpen(false)}
+                >
+                  <FiActivity />
+                  Activity Log
+                </Link>
+                <Link
                   to="/settings"
                   className="user-menu-item"
                   onClick={() => setIsUserMenuOpen(false)}
@@ -142,74 +150,88 @@ const Navbar = () => {
       </div>
 
       {/* Mobile Navigation */}
-      {isMobileMenuOpen && (
-        <div className="mobile-nav">
-          <Link
-            to="/dashboard"
-            className={`mobile-nav-link ${isActive('/dashboard')}`}
-            onClick={closeMobileMenu}
-          >
-            <FiHome className="nav-icon" />
-            Dashboard
-          </Link>
-          <Link
-            to="/subscriptions"
-            className={`mobile-nav-link ${isActive('/subscriptions')}`}
-            onClick={closeMobileMenu}
-          >
-            <FiMail className="nav-icon" />
-            Subscriptions
-          </Link>
-          <Link
-            to="/breach-check"
-            className={`mobile-nav-link ${isActive('/breach-check')}`}
-            onClick={closeMobileMenu}
-          >
-            <FiShield className="nav-icon" />
-            Security Check
-          </Link>
-          <Link
-            to="/surface"
-            className={`mobile-nav-link ${isActive('/surface')}`}
-            onClick={closeMobileMenu}
-          >
-            <FiGlobe className="nav-icon" />
-            Surface Scanner
-          </Link>
-          <Link
-            to="/settings"
-            className={`mobile-nav-link ${isActive('/settings')}`}
-            onClick={closeMobileMenu}
-          >
-            <FiSettings className="nav-icon" />
-            Settings
-          </Link>
-          <button
-            className="mobile-nav-link logout-btn"
-            onClick={handleLogout}
-          >
-            <FiLogOut className="nav-icon" />
-            Logout
-          </button>
-        </div>
-      )}
+      {
+        isMobileMenuOpen && (
+          <div className="mobile-nav">
+            <Link
+              to="/dashboard"
+              className={`mobile-nav-link ${isActive('/dashboard')}`}
+              onClick={closeMobileMenu}
+            >
+              <FiHome className="nav-icon" />
+              Dashboard
+            </Link>
+            <Link
+              to="/subscriptions"
+              className={`mobile-nav-link ${isActive('/subscriptions')}`}
+              onClick={closeMobileMenu}
+            >
+              <FiMail className="nav-icon" />
+              Subscriptions
+            </Link>
+            <Link
+              to="/breach-check"
+              className={`mobile-nav-link ${isActive('/breach-check')}`}
+              onClick={closeMobileMenu}
+            >
+              <FiShield className="nav-icon" />
+              Security Check
+            </Link>
+            <Link
+              to="/surface"
+              className={`mobile-nav-link ${isActive('/surface')}`}
+              onClick={closeMobileMenu}
+            >
+              <FiGlobe className="nav-icon" />
+              Surface Scanner
+            </Link>
+            <Link
+              to="/activity"
+              className={`mobile-nav-link ${isActive('/activity')}`}
+              onClick={closeMobileMenu}
+            >
+              <FiActivity className="nav-icon" />
+              Activity Log
+            </Link>
+            <Link
+              to="/settings"
+              className={`mobile-nav-link ${isActive('/settings')}`}
+              onClick={closeMobileMenu}
+            >
+              <FiSettings className="nav-icon" />
+              Settings
+            </Link>
+            <button
+              className="mobile-nav-link logout-btn"
+              onClick={handleLogout}
+            >
+              <FiLogOut className="nav-icon" />
+              Logout
+            </button>
+          </div>
+        )
+      }
 
       {/* Overlay for mobile menu */}
-      {isMobileMenuOpen && (
-        <div
-          className="mobile-menu-overlay"
-          onClick={closeMobileMenu}
-        />
-      )}
+      {
+        isMobileMenuOpen && (
+          <div
+            className="mobile-menu-overlay"
+            onClick={closeMobileMenu}
+          />
+        )
+      }
 
       {/* Overlay for user menu */}
-      {isUserMenuOpen && (
-        <div
-          className="user-menu-overlay"
-          onClick={() => setIsUserMenuOpen(false)}
-        />
-      )}
-    </nav>
+      {
+        isUserMenuOpen && (
+          <div
+            className="user-menu-overlay"
+            onClick={() => setIsUserMenuOpen(false)}
+          />
+        )
+      }
+    </nav >
   );
 };
 

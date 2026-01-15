@@ -26,7 +26,9 @@ import SignupPage from './pages/SignupPage.jsx';
 import SubscriptionsPage from './pages/SubscriptionsPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import BreachCheckPage from './pages/BreachCheckPage.jsx';
+import TwoFactorPage from './pages/TwoFactorPage.jsx';
 import SurfacePage from './pages/SurfacePage.jsx';
+import ActivityLog from './pages/ActivityLog.jsx';
 import LoadingSpinner from './components/LoadingSpinner.jsx';
 
 import './App.css';
@@ -98,6 +100,10 @@ function AppRoutes() {
           element={<LoginCallback />}
         />
         <Route
+          path="/login/2fa"
+          element={<TwoFactorPage />}
+        />
+        <Route
           path="/signup"
           element={
             <PublicRoute>
@@ -142,6 +148,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <SurfacePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/activity"
+          element={
+            <ProtectedRoute>
+              <ActivityLog />
             </ProtectedRoute>
           }
         />
