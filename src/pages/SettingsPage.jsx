@@ -15,6 +15,15 @@ const SettingsPage = () => {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [ruleInput, setRuleInput] = useState('');
+  const [activeRuleTab, setActiveRuleTab] = useState('whitelist');
+
+  // 2FA State
+  const [twoFactorData, setTwoFactorData] = useState(null);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [show2FASetup, setShow2FASetup] = useState(false);
+  const [disableCode, setDisableCode] = useState('');
+  const [isDisabling, setIsDisabling] = useState(false);
 
   // Form states
   const [profileForm, setProfileForm] = useState({
@@ -551,23 +560,7 @@ const SettingsPage = () => {
                   <small className="form-text">How long to keep your email scan data</small>
                 </div>
 
-                <div className="form-group">
-                  <div className="checkbox-group">
-                    <input
-                      type="checkbox"
-                      id="twoFactorAuth"
-                      checked={preferencesForm.twoFactorAuth}
-                      onChange={(e) => setPreferencesForm({
-                        ...preferencesForm,
-                        twoFactorAuth: e.target.checked
-                      })}
-                    />
-                    <label htmlFor="twoFactorAuth">
-                      <strong>Two-Factor Authentication</strong>
-                      <span>Enable 2FA for enhanced account security</span>
-                    </label>
-                  </div>
-                </div>
+
 
                 <button type="submit" className="btn btn-primary" disabled={loading}>
                   {loading ? <LoadingSpinner size="small" /> : <FiSave />}
