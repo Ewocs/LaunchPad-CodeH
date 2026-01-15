@@ -122,6 +122,11 @@ const userSchema = new mongoose.Schema(
         type: Boolean,
         default: true,
       },
+      theme: {
+        type: String,
+        enum: ['breach-dark', 'security-blue', 'high-contrast'],
+        default: 'breach-dark',
+      },
     },
   },
   {
