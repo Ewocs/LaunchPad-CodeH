@@ -103,4 +103,8 @@ export const activityAPI = {
   getLogs: (params) => api.get('/activity', { params }),
 };
 
+export const reportAPI = {
+  download: () => api.get('/reports/download', { responseType: 'blob' })
+};
+
 export default api;
