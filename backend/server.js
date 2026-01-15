@@ -86,15 +86,17 @@ app.use('/api', csrfProtection);
 /* ===============================
    Routes
 ================================ */
+const notificationRoutes = require('./routes/notifications');
+
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/emails', emailRoutes);
+app.use('/api/notifications', notificationRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/breach-check', breachCheckRoutes);
 app.use('/api/surface', surfaceRoutes);
 app.use('/api/activity', activityRoutes);
-app.use('/api/reports', reportRoutes);
 
 /* ===============================
    Health & Status Routes
