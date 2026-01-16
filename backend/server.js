@@ -7,14 +7,18 @@ const cookieParser = require('cookie-parser');
 const csrf = require('csurf');
 require('dotenv').config();
 
+/* ===============================
+   Import Routes (Unversioned)
+================================ */
 const authRoutes = require('./routes/auth');
 const auth2faRoutes = require('./routes/auth2fa');
 const dashboardRoutes = require('./routes/dashboard');
 const emailRoutes = require('./routes/emails');
 const subscriptionRoutes = require('./routes/subscriptions');
-const adminRoutes = require('./routes/admin');
-// ... other imports
+const breachCheckRoutes = require('./routes/breachCheck');
+const surfaceRoutes = require('./routes/surface');
 
+const MigrationService = require('./services/migrationService');
 
 const app = express();
 app.set('trust proxy', true);
@@ -50,14 +54,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 /* ===============================
-   CSRF Protection Setup
-================================ */
-/**
- * CSRF Protection Strategy:
- * - Enabled only for state-changing requests
- * - Uses double-submit cookie pattern
- * - Safe methods (GET, HEAD, OPTIONS) are excluded
- */
+   CSRF Protection
 const csrfProtection = csrf({
   cookie: {
     httpOnly: true,
@@ -68,39 +65,33 @@ const csrfProtection = csrf({
 });
 
 /**
- * CSRF Token Endpoint
- * Frontend must call this once and store token
+ * CSRF token endpoint (versioned)
  */
-app.get('/api/csrf-token', csrfProtection, (req, res) => {
-  res.status(200).json({
-    csrfToken: req.csrfToken(),
+app.get('/api/v1/csrf-token', csrfProtection, (req, res) => {
+  res.status(200).json({ csrfToken: req.csrfToken() });
+});
+
+/* ===============================
+   API VERSIONING SETUP
+
+/* ===============================
+   Backward Compatibility (Optional)
+   Redirect old /api/* → /api/v1/*
+================================ */
+/**
+ * This ensures existing clients don’t break immediately.
+ * Can be removed in future after deprecation period.
+ */
+app.use('/api', (req, res) => {
+  res.status(410).json({
+    message:
+      'Unversioned API is deprecated. Please use /api/v1/* endpoints.',
   });
 });
 
 /* ===============================
-   Apply CSRF Protection
-   (Only to authenticated / API routes)
-================================ */
-app.use('/api', csrfProtection);
-
-/* ===============================
-   Routes
-================================ */
-const notificationRoutes = require('./routes/notifications');
-
-app.use('/api/auth', authRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/emails', emailRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/subscriptions', subscriptionRoutes);
-app.use('/api/breach-check', breachCheckRoutes);
-app.use('/api/surface', surfaceRoutes);
-app.use('/api/activity', activityRoutes);
-
-/* ===============================
    Health & Status Routes
-   (Public, no CSRF needed)
+   (Non-versioned, public)
     status: 'OK',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
@@ -229,24 +220,14 @@ app.get('/health/ready', (req, res) => {
 app.get('/api/status', (req, res) => {
   res.status(200).json({
     message: 'Gmail Subscription Manager API is running',
-    version: '1.0.0',
-    status: 'healthy',
+    activeVersion: 'v1',
     timestamp: new Date().toISOString(),
     database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
   });
 });
 
-// Helper function to format memory
-function memoryFormat(bytes) {
-  return `${Math.round(bytes / 1024 / 1024)}MB`;
-}
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({
-    message: 'Something went wrong!',
-    error: process.env.NODE_ENV === 'development' ? err.message : {}
+/* ===============================
+   404 Handler
   });
 });
 
@@ -256,7 +237,6 @@ app.use((err, req, res, next) => {
 app.use((err, req, res, next) => {
   console.error(err);
 
-  // CSRF-specific error handling
   if (err.code === 'EBADCSRFTOKEN') {
     return res.status(403).json({
       success: false,
@@ -264,9 +244,7 @@ app.use((err, req, res, next) => {
     });
   }
 
-  const statusCode = err.statusCode || 500;
-
-  res.status(statusCode).json({
+  res.status(err.statusCode || 500).json({
     success: false,
     message: err.message || 'Internal Server Error',
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
