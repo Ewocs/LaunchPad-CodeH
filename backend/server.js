@@ -7,8 +7,6 @@ const cookieParser = require('cookie-parser');
 const csrf = require('csurf');
 require('dotenv').config();
 
-const apiDeprecationMiddleware = require('./middleware/apiDeprecation.middleware');
-
 /* ===============================
    Import Routes (Unversioned)
 ================================ */
@@ -36,22 +34,12 @@ app.use(
   })
 );
 
-/* API Deprecation Headers */
-app.use('/api', apiDeprecationMiddleware);
-
 /* ===============================
    Rate Limiting
 ================================ */
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 1000,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    success: false,
-    errorCode: 'TOO_MANY_REQUESTS',
-    message: 'Too many requests from this IP, please try again later.',
-  },
 });
 app.use(limiter);
 
@@ -68,9 +56,6 @@ app.use(
       process.env.FRONTEND_URL,
     ].filter(Boolean),
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
-    optionsSuccessStatus: 204,
   })
 );
 
@@ -93,62 +78,21 @@ const csrfProtection = csrf({
   ignoreMethods: ['GET', 'HEAD', 'OPTIONS'],
 });
 
-/**
- * CSRF token endpoint (versioned)
- */
-app.get('/api/v1/csrf-token', csrfProtection, (req, res) => {
-  res.status(200).json({ csrfToken: req.csrfToken() });
-});
-
 /* ===============================
-   API VERSIONING SETUP
+   API ROUTES (UNVERSIONED, WORKING)
 ================================ */
-const v1Router = express.Router();
-
-/* Apply CSRF only to versioned APIs */
-v1Router.use(csrfProtection);
-
-/* ===============================
-   V1 ROUTES
-================================ */
-v1Router.use('/auth', authRoutes);
-v1Router.use('/dashboard', dashboardRoutes);
-v1Router.use('/emails', emailRoutes);
-v1Router.use('/subscriptions', subscriptionRoutes);
-v1Router.use('/breach-check', breachCheckRoutes);
-v1Router.use('/surface', surfaceRoutes);
-
-/* Mount versioned router */
-app.use('/api/v1', v1Router);
+app.use('/api/auth', authRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/emails', emailRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/breach-check', breachCheckRoutes);
+app.use('/api/surface', surfaceRoutes);
 
 /* ===============================
-   Backward Compatibility
-================================ */
-app.use('/api', (req, res) => {
-  res.status(410).json({
-    success: false,
-    errorCode: 'API_DEPRECATED',
-    message: 'Unversioned API is deprecated. Please use /api/v1/* endpoints.',
-  });
-});
-
-/* ===============================
-   Health & Status Routes
+   Health & Status
 ================================ */
 app.get('/health', (req, res) => {
-  res.status(200).json({
-    status: 'OK',
-    environment: process.env.NODE_ENV || 'development',
-    timestamp: new Date().toISOString(),
-  });
-});
-
-app.get('/api/status', (req, res) => {
-  res.status(200).json({
-    message: 'Gmail Subscription Manager API is running',
-    activeVersion: 'v1',
-    timestamp: new Date().toISOString(),
-  });
+  res.status(200).json({ status: 'OK' });
 });
 
 /* ===============================
@@ -180,7 +124,6 @@ app.use((err, req, res, next) => {
     success: false,
     errorCode: err.errorCode || 'INTERNAL_SERVER_ERROR',
     message: err.message || 'Internal Server Error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 });
 
@@ -190,11 +133,7 @@ app.use((err, req, res, next) => {
 mongoose
   .connect(
     process.env.MONGODB_URI ||
-      'mongodb://localhost:27017/gmail-subscription-manager',
-    {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    }
+      'mongodb://localhost:27017/gmail-subscription-manager'
   )
   .then(async () => {
     console.log('Connected to MongoDB');
@@ -208,10 +147,9 @@ mongoose
 /* ===============================
    Server Start
 ================================ */
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🌱 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Server running on port ${PORT}`);
 });
 
 module.exports = app;

@@ -22,12 +22,7 @@ const handleValidation = (req) => {
     throw new AppError('Validation failed', 400);
   }
 };
-// Example
-throw new AppError(
-  'Invalid credentials',
-  401,
-  ERROR_CODES.AUTH_INVALID_CREDENTIALS
-);
+
 const generateAccessToken = (userId) => {
   return jwt.sign(
     { userId },
@@ -45,10 +40,10 @@ const requireCsrf = (req, res, next) => next();
 ===================================================== */
 
 const MAX_FAILED_ATTEMPTS = 5;
-const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+const LOCK_DURATION_MS = 15 * 60 * 1000;
 
 /* =====================================================
-   GOOGLE OAUTH ROUTES (UNCHANGED)
+   GOOGLE OAUTH ROUTES
 ===================================================== */
 
 router.get('/google/url', asyncHandler(async (req, res) => {
@@ -101,30 +96,6 @@ router.get(
   })
 );
 
-router.post(
-  '/google/callback',
-  body('code').notEmpty(),
-  asyncHandler(async (req, res) => {
-    handleValidation(req);
-
-    const tokens = await googleAuthService.getTokens(req.body.code);
-    const userInfo = await googleAuthService.getUserInfo(tokens.access_token);
-    const user = await googleAuthService.createOrUpdateUser(userInfo, tokens);
-
-    const accessToken = generateAccessToken(user._id);
-
-    res.status(200).json({
-      token: accessToken,
-      user: {
-        id: user._id,
-        email: user.email,
-        name: user.name,
-        picture: user.picture,
-      },
-    });
-  })
-);
-
 /* =====================================================
    EMAIL / PASSWORD AUTH
 ===================================================== */
@@ -145,7 +116,6 @@ router.post(
     }
 
     const user = await User.create({ email, name, password });
-
     const accessToken = generateAccessToken(user._id);
 
     res.status(201).json({
@@ -159,10 +129,6 @@ router.post(
   })
 );
 
-/**
- * POST /login
- * 🔒 Account Lockout Implemented
- */
 router.post(
   '/login',
   requireCsrf,
@@ -177,10 +143,9 @@ router.post(
       throw new AppError('Invalid credentials', 401);
     }
 
-    // 🔒 Check if account is locked
     if (user.lockUntil && user.lockUntil > Date.now()) {
       throw new AppError(
-        'Account temporarily locked due to multiple failed login attempts. Please try again later.',
+        'Account temporarily locked. Try again later.',
         423
       );
     }
@@ -198,7 +163,6 @@ router.post(
       throw new AppError('Invalid credentials', 401);
     }
 
-    // ✅ Successful login → reset lockout counters
     user.failedLoginAttempts = 0;
     user.lockUntil = null;
     await user.save();
@@ -217,7 +181,7 @@ router.post(
 );
 
 /* =====================================================
-   PROTECTED ROUTES (UNCHANGED)
+   PROTECTED ROUTES
 ===================================================== */
 
 router.get(
@@ -230,21 +194,6 @@ router.get(
   })
 );
 
-router.patch(
-  '/preferences',
-  authMiddleware,
-  requireCsrf,
-  asyncHandler(async (req, res) => {
-    Object.assign(req.user.preferences, req.body);
-    await req.user.save();
-
-    res.status(200).json({
-      message: 'Preferences updated successfully',
-      preferences: req.user.preferences,
-    });
-  })
-);
-
 router.post(
   '/logout',
   authMiddleware,
@@ -252,19 +201,6 @@ router.post(
   asyncHandler(async (req, res) => {
     res.status(200).json({
       message: 'Logged out successfully',
-    });
-  })
-);
-
-router.delete(
-  '/revoke',
-  authMiddleware,
-  requireCsrf,
-  asyncHandler(async (req, res) => {
-    await User.deleteOne({ _id: req.user._id });
-
-    res.status(200).json({
-      message: 'Account and all data deleted successfully',
     });
   })
 );
