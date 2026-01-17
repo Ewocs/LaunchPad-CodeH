@@ -63,6 +63,7 @@ app.use(cookieParser());
  * - Enabled only for state-changing requests
  * - Uses double-submit cookie pattern
  * - Safe methods (GET, HEAD, OPTIONS) are excluded
+ * - Public auth endpoints (login, register) are excluded
  */
 const csrfProtection = csrf({
   cookie: {
@@ -86,8 +87,24 @@ app.get('/api/csrf-token', csrfProtection, (req, res) => {
 /* ===============================
    Apply CSRF Protection
    (Only to authenticated / API routes)
+   Exclude public authentication endpoints
 ================================ */
-app.use('/api', csrfProtection);
+const publicAuthPaths = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/google/url',
+  '/auth/google/callback'
+];
+
+app.use('/api', (req, res, next) => {
+  // Skip CSRF for public authentication endpoints
+  // req.path is relative to the mount point (/api)
+  if (publicAuthPaths.includes(req.path)) {
+    return next();
+  }
+  // Apply CSRF protection to all other API routes
+  csrfProtection(req, res, next);
+});
 
 /* ===============================
    Routes
