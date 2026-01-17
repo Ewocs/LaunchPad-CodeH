@@ -19,6 +19,216 @@ Authorization: Bearer <token>
 
 ## Authentication Endpoints
 
+### Register User (Email/Password)
+
+Create a new user account using email and password.
+
+**Endpoint:** `POST /auth/register`
+
+**Authentication:** Not required (public endpoint)
+
+**Request Body:**
+```json
+{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "password": "SecurePass123"
+}
+```
+
+**Validation Rules:**
+- `name`: Required, non-empty string
+- `email`: Required, valid email format
+- `password`: Required, minimum 8 characters, must contain:
+  - At least one uppercase letter
+  - At least one lowercase letter
+  - At least one number
+
+**Response:** `201 Created`
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "user": {
+    "id": "507f1f77bcf86cd799439011",
+    "email": "john@example.com",
+    "name": "John Doe"
+  },
+  "message": "Account created successfully"
+}
+```
+
+**Error Responses:**
+
+`400 Bad Request` - Validation failed
+```json
+{
+  "message": "Validation failed",
+  "errors": [
+    {
+      "msg": "Password must be at least 8 characters long",
+      "param": "password",
+      "location": "body"
+    }
+  ]
+}
+```
+
+`400 Bad Request` - Email already registered
+```json
+{
+  "message": "Email already registered. Please login instead."
+}
+```
+
+---
+
+### Login (Email/Password)
+
+Authenticate a user with email and password.
+
+**Endpoint:** `POST /auth/login`
+
+**Authentication:** Not required (public endpoint)
+
+**Request Body:**
+```json
+{
+  "email": "john@example.com",
+  "password": "SecurePass123"
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "user": {
+    "id": "507f1f77bcf86cd799439011",
+    "email": "john@example.com",
+    "name": "John Doe"
+  }
+}
+```
+
+**Response (2FA Enabled):** `200 OK`
+```json
+{
+  "requires2FA": true,
+  "tempToken": "eyJhbGciOiJIUzI1NiIs...",
+  "message": "Two-factor authentication required"
+}
+```
+
+**Error Responses:**
+
+`400 Bad Request` - Validation failed
+```json
+{
+  "message": "Validation failed",
+  "errors": [
+    {
+      "msg": "Please provide a valid email",
+      "param": "email",
+      "location": "body"
+    }
+  ]
+}
+```
+
+`401 Unauthorized` - Invalid credentials
+```json
+{
+  "message": "Invalid credentials"
+}
+```
+
+---
+
+### Get Google OAuth URL
+
+Get the Google OAuth authorization URL.
+
+**Endpoint:** `GET /auth/google/url`
+
+**Authentication:** Not required (public endpoint)
+
+**Response:** `200 OK`
+```json
+{
+  "authUrl": "https://accounts.google.com/o/oauth2/v2/auth?..."
+}
+```
+
+**Usage:**
+Redirect the user to the returned `authUrl` to initiate Google OAuth flow.
+
+---
+
+### Google OAuth Callback (GET)
+
+Handle Google OAuth callback (browser redirect).
+
+**Endpoint:** `GET /auth/google/callback`
+
+**Authentication:** Not required (public endpoint)
+
+**Query Parameters:**
+- `code`: Authorization code from Google (provided by Google)
+- `error`: Error code if authorization failed
+
+**Response:**
+Redirects to frontend with token in URL:
+```
+http://localhost:3000/login/callback?token=<jwt_token>&user=<encoded_user_data>
+```
+
+**Error Response:**
+Redirects to login page with error:
+```
+http://localhost:3000/login?error=<error_message>
+```
+
+---
+
+### Google OAuth Callback (POST)
+
+Handle Google OAuth callback via API.
+
+**Endpoint:** `POST /auth/google/callback`
+
+**Authentication:** Not required (public endpoint)
+
+**Request Body:**
+```json
+{
+  "code": "4/0AY0e-g7..."
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "user": {
+    "id": "507f1f77bcf86cd799439011",
+    "email": "john@example.com",
+    "name": "John Doe",
+    "picture": "https://lh3.googleusercontent.com/..."
+  }
+}
+```
+
+**Response (2FA Enabled):** `200 OK`
+```json
+{
+  "requires2FA": true,
+  "tempToken": "eyJhbGciOiJIUzI1NiIs...",
+  "message": "Two-factor authentication required"
+}
+```
+
+---
+
 ### Register User
 
 Create a new user account.
