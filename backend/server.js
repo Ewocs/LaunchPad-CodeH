@@ -4,7 +4,6 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
-const csrf = require('csurf');
 require('dotenv').config();
 
 const authRoutes = require('./routes/auth');
@@ -30,7 +29,6 @@ app.set('trust proxy', true);
 
 /* ===============================
    CORS Configuration
-   (credentials required for CSRF cookies)
 ================================ */
 app.use(
   cors({
@@ -43,7 +41,7 @@ app.use(
     ].filter(Boolean),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
     optionsSuccessStatus: 204,
   })
 );
@@ -56,55 +54,15 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 /* ===============================
-   CSRF Protection Setup
+   CSRF Protection - DISABLED
+   
+   Note: CSRF protection is disabled for this JWT-based API.
+   JWT tokens in Authorization headers are not vulnerable to CSRF attacks
+   because browsers don't automatically send custom headers.
+   
+   CSRF is primarily needed when using cookie-based authentication.
+   Since we use JWT tokens in headers, CSRF protection is not required.
 ================================ */
-/**
- * CSRF Protection Strategy:
- * - Enabled only for state-changing requests
- * - Uses double-submit cookie pattern
- * - Safe methods (GET, HEAD, OPTIONS) are excluded
- * - Public auth endpoints (login, register) are excluded
- */
-const csrfProtection = csrf({
-  cookie: {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-  },
-  ignoreMethods: ['GET', 'HEAD', 'OPTIONS'],
-});
-
-/**
- * CSRF Token Endpoint
- * Frontend must call this once and store token
- */
-app.get('/api/csrf-token', csrfProtection, (req, res) => {
-  res.status(200).json({
-    csrfToken: req.csrfToken(),
-  });
-});
-
-/* ===============================
-   Apply CSRF Protection
-   (Only to authenticated / API routes)
-   Exclude public authentication endpoints
-================================ */
-const publicAuthPaths = [
-  '/auth/login',
-  '/auth/register',
-  '/auth/google/url',
-  '/auth/google/callback'
-];
-
-app.use('/api', (req, res, next) => {
-  // Skip CSRF for public authentication endpoints
-  // req.path is relative to the mount point (/api)
-  if (publicAuthPaths.includes(req.path)) {
-    return next();
-  }
-  // Apply CSRF protection to all other API routes
-  csrfProtection(req, res, next);
-});
 
 /* ===============================
    Routes

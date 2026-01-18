@@ -101,6 +101,10 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false
     },
+    twoFactorRecoveryCodes: {
+      type: [String],
+      select: false
+    },
 
     preferences: {
       scanFrequency: {
