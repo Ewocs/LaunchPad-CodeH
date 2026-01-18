@@ -4,7 +4,6 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
-const csrf = require('csurf');
 require('dotenv').config();
 
 /* ===============================
@@ -30,7 +29,6 @@ app.set('trust proxy', true);
 
 /* ===============================
    CORS Configuration
-   (credentials required for CSRF cookies)
 ================================ */
 app.use(
   cors({
@@ -42,6 +40,9 @@ app.use(
       process.env.FRONTEND_URL,
     ].filter(Boolean),
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    optionsSuccessStatus: 204,
   })
 );
 
@@ -53,30 +54,14 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 /* ===============================
-   CSRF Protection Setup
-const csrfProtection = csrf({
-  cookie: {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-  },
-  ignoreMethods: ['GET', 'HEAD', 'OPTIONS'],
-});
-
-/**
- * CSRF Token Endpoint
- * Frontend must call this once and store token
- */
-app.get('/api/csrf-token', csrfProtection, (req, res) => {
-  res.status(200).json({
-    csrfToken: req.csrfToken(),
-  });
-});
-
-/* ===============================
-   Apply CSRF Protection
-   (Only to authenticated / API routes)
-   Exclude public authentication endpoints
+   CSRF Protection - DISABLED
+   
+   Note: CSRF protection is disabled for this JWT-based API.
+   JWT tokens in Authorization headers are not vulnerable to CSRF attacks
+   because browsers don't automatically send custom headers.
+   
+   CSRF is primarily needed when using cookie-based authentication.
+   Since we use JWT tokens in headers, CSRF protection is not required.
 /* ===============================
    API ROUTES (UNVERSIONED, WORKING)
 app.use('/api/dashboard', dashboardRoutes);
