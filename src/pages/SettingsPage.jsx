@@ -11,6 +11,7 @@ import './SettingsPage.css';
 
 const SettingsPage = () => {
   const { user, logout, updatePreferences } = useAuth();
+  const { theme, setTheme } = useTheme();
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -48,12 +49,6 @@ const SettingsPage = () => {
     dataRetention: '12', // months
     twoFactorAuth: false,
     theme: user?.preferences?.theme || 'light',
-    customTheme: user?.preferences?.customTheme || {
-      primaryColor: '#667eea',
-      secondaryColor: '#764ba2',
-      backgroundColor: '#f8fafc',
-      textColor: '#2d3748'
-    },
     whitelist: user?.preferences?.whitelist || [],
     blacklist: user?.preferences?.blacklist || []
   });
@@ -64,7 +59,6 @@ const SettingsPage = () => {
       setPreferencesForm(prev => ({
         ...prev,
         ...user.preferences,
-        customTheme: user.preferences.customTheme || prev.customTheme,
         whitelist: user.preferences.whitelist || [],
         blacklist: user.preferences.blacklist || []
       }));
@@ -273,45 +267,6 @@ const SettingsPage = () => {
       setLoading(false);
     }
   };
-
-  // Live Theme Preview
-  React.useEffect(() => {
-    const root = document.documentElement;
-    const { theme, customTheme } = preferencesForm;
-
-    if (theme === 'custom' && customTheme) {
-      if (customTheme.primaryColor) {
-        root.style.setProperty('--accent-cyan', customTheme.primaryColor);
-        root.style.setProperty('--primary-color', customTheme.primaryColor);
-      }
-      if (customTheme.secondaryColor) root.style.setProperty('--secondary-purple', customTheme.secondaryColor);
-      if (customTheme.backgroundColor) root.style.setProperty('--bg-primary', customTheme.backgroundColor);
-      if (customTheme.textColor) root.style.setProperty('--text-primary', customTheme.textColor);
-    } else {
-      // Reset if swiching back to light/dark (AuthContext will handle Dark mode toggle logic if implemented broadly, 
-      // but here we just clean up custom vars so CSS defaults take over or AuthContext re-applies)
-      root.style.removeProperty('--accent-cyan');
-      root.style.removeProperty('--primary-color');
-      root.style.removeProperty('--secondary-purple');
-      root.style.removeProperty('--bg-primary');
-      root.style.removeProperty('--text-primary');
-    }
-
-    // Cleanup on unmount (restore user settings)
-    return () => {
-      if (user?.preferences) {
-        // Trigger AuthContext effect or manually restore?
-        // AuthContext effect depends on [user]. It won't auto-run on unmount of SettingsPage.
-        // But since we modified DOM, we should ideally leave it if Saved, or Revert if Not Saved.
-        // If we navigate away without saving, we want to revert.
-        // Getting complex. Simple approach: let the DOM stay as is until refresh or next Context update.
-        // But "Cancel" isn't an option here. User expects "Save" to persist.
-        // If they don't save and leave, the "Preview" persists until reload.
-        // Correct fix: On unmount, if !saved, revert?
-        // I'll leave basic cleanup or rely on AuthContext.
-      }
-    };
-  }, [preferencesForm.theme, preferencesForm.customTheme]);
 
   const handleDeleteAccount = async () => {
     if (!window.confirm('Are you sure you want to delete your account? This will revoke all OAuth tokens and permanently delete all your data. This action cannot be undone.')) {
@@ -539,95 +494,31 @@ const SettingsPage = () => {
                 <div className="form-group">
                   <label>Theme Mode</label>
                   <div className="theme-options">
-                    {['light', 'dark', 'custom'].map(mode => (
-                      <button
-                        key={mode}
-                        type="button"
-                        className={`theme-btn ${preferencesForm.theme === mode ? 'active' : ''}`}
-                        onClick={() => setPreferencesForm({ ...preferencesForm, theme: mode })}
-                      >
-                        {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                      </button>
-                    ))}
+                    <button
+                      type="button"
+                      className={`theme-btn ${theme === 'light' ? 'active' : ''}`}
+                      onClick={() => {
+                        console.log('🌞 Switching to LIGHT theme');
+                        document.documentElement.setAttribute('data-theme', 'light');
+                        localStorage.setItem('breachbuddy-theme', 'light');
+                        setTheme('light');
+                      }}
+                    >
+                      ☀️ Light
+                    </button>
+                    <button
+                      type="button"
+                      className={`theme-btn ${theme === 'dark' ? 'active' : ''}`}
+                      onClick={() => {
+                        console.log('🌙 Switching to DARK theme');
+                        document.documentElement.setAttribute('data-theme', 'dark');
+                        localStorage.setItem('breachbuddy-theme', 'dark');
+                        setTheme('dark');
+                      }}
+                    >
+                      🌙 Dark
+                    </button>
                   </div>
-                </div>
-
-                {preferencesForm.theme === 'custom' && (
-                  <div className="custom-theme-builder fade-in">
-                    <h4>Custom Colors</h4>
-                    <div className="color-grid">
-                      <div className="color-input-group">
-                        <label>Primary Color</label>
-                        <div className="color-picker-wrapper">
-                          <input
-                            type="color"
-                            value={preferencesForm.customTheme.primaryColor}
-                            onChange={(e) => setPreferencesForm({
-                              ...preferencesForm,
-                              customTheme: { ...preferencesForm.customTheme, primaryColor: e.target.value }
-                            })}
-                          />
-                          <span>{preferencesForm.customTheme.primaryColor}</span>
-                        </div>
-                      </div>
-
-                      <div className="color-input-group">
-                        <label>Secondary Color</label>
-                        <div className="color-picker-wrapper">
-                          <input
-                            type="color"
-                            value={preferencesForm.customTheme.secondaryColor}
-                            onChange={(e) => setPreferencesForm({
-                              ...preferencesForm,
-                              customTheme: { ...preferencesForm.customTheme, secondaryColor: e.target.value }
-                            })}
-                          />
-                          <span>{preferencesForm.customTheme.secondaryColor}</span>
-                        </div>
-                      </div>
-
-                      <div className="color-input-group">
-                        <label>Background Color</label>
-                        <div className="color-picker-wrapper">
-                          <input
-                            type="color"
-                            value={preferencesForm.customTheme.backgroundColor}
-                            onChange={(e) => setPreferencesForm({
-                              ...preferencesForm,
-                              customTheme: { ...preferencesForm.customTheme, backgroundColor: e.target.value }
-                            })}
-                          />
-                          <span>{preferencesForm.customTheme.backgroundColor}</span>
-                        </div>
-                      </div>
-
-                      <div className="color-input-group">
-                        <label>Text Color</label>
-                        <div className="color-picker-wrapper">
-                          <input
-                            type="color"
-                            value={preferencesForm.customTheme.textColor}
-                            onChange={(e) => setPreferencesForm({
-                              ...preferencesForm,
-                              customTheme: { ...preferencesForm.customTheme, textColor: e.target.value }
-                            })}
-                          />
-                          <span>{preferencesForm.customTheme.textColor}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="form-actions" style={{ marginTop: '1rem' }}>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={handlePreferencesSubmit}
-                    disabled={loading}
-                  >
-                    <FiSave /> Save Theme
-                  </button>
                 </div>
               </div>
             </div>

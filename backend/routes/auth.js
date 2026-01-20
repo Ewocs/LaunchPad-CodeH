@@ -334,15 +334,21 @@ router.patch(
     .isIn(['daily', 'weekly', 'monthly', 'manual']),
   body('emailCategories').optional().isArray(),
   body('notifications').optional().isBoolean(),
-  body('theme').optional().isIn(['light', 'dark', 'custom']),
-  body('customTheme').optional().isObject(),
+  body('theme').optional().isIn(['light', 'dark']),
   body('whitelist').optional().isArray(),
   body('blacklist').optional().isArray(),
   asyncHandler(async (req, res) => {
-    handleValidation(req);
+    // Validate request
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
 
     const user = req.user;
-    const { scanFrequency, emailCategories, notifications, theme, customTheme, whitelist, blacklist } = req.body;
+    const { scanFrequency, emailCategories, notifications, theme, whitelist, blacklist } = req.body;
 
     if (scanFrequency) user.preferences.scanFrequency = scanFrequency;
     if (emailCategories)
@@ -350,16 +356,22 @@ router.patch(
     if (notifications !== undefined)
       user.preferences.notifications = notifications;
     if (theme) user.preferences.theme = theme;
-    if (customTheme) {
-      user.preferences.customTheme = {
-        ...user.preferences.customTheme,
-        ...customTheme
-      };
-    }
     if (whitelist) user.preferences.whitelist = whitelist;
     if (blacklist) user.preferences.blacklist = blacklist;
 
     await user.save();
+
+    // Log theme change activity
+    if (theme) {
+      await logActivity(
+        user._id,
+        'THEME_CHANGE',
+        `Theme changed to ${theme}`,
+        req,
+        'success',
+        { theme }
+      );
+    }
 
     res.status(200).json({
       message: 'Preferences updated successfully',
