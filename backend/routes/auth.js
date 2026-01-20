@@ -13,7 +13,7 @@ const {
   wrapAuthResponse
 } = require('../middleware/rateLimiter');
 const securityLogger = require('../services/securityLogger');
-const { changePassword } = require('../controllers/userController');
+const { changePassword, deleteAccount } = require('../controllers/userController');
 
 const asyncHandler = require('../middleware/asyncHandler');
 const AppError = require('../errors/AppError');
@@ -405,53 +405,12 @@ router.post('/revoke-gmail', authMiddleware, authStrictLimiter, async (req, res)
   }
 });
 
-// Revoke access (revoke OAuth tokens and delete user account and data) - Strict rate limiting for critical operation
-router.delete('/revoke', authMiddleware, authStrictLimiter, async (req, res) => {
-  const ip = req.ip || req.connection.remoteAddress;
-  
-  try {
-    const userId = req.user._id;
-    const userEmail = req.user.email;
-    
-    console.log(`🔄 Starting revoke process for user: ${userEmail}`);
-    
-    // Step 1: Revoke OAuth tokens from Google
-    try {
-      await googleAuthService.revokeAllUserTokens(userId);
-    } catch {
-      console.warn('Token revocation failed, continuing cleanup');
-    }
-
-    const Subscription = require('../models/Subscription');
-    const Email = require('../models/Email');
-
-    const deletedSubs = await Subscription.deleteMany({ userId });
-    const deletedEmails = await Email.deleteMany({ userId });
-
-    await req.user.deleteOne();
-    console.log(`🗑️ Deleted user account: ${userEmail}`);
-    
-    // Log account deletion
-    securityLogger.logAccountDeletion(userId, userEmail, ip, {
-      subscriptions: deletedSubs.deletedCount,
-      emails: deletedEmails.deletedCount
-    });
-    
-    console.log('✅ Complete revoke process finished');
-    
-    res.json({ 
-      message: 'Access revoked successfully. Your account and all data have been deleted.',
-      deletedData: {
-        subscriptions: deletedSubs.deletedCount,
-        emails: deletedEmails.deletedCount,
-      },
-    });
-  } catch (error) {
-    console.error('Revoke error:', error);
-    securityLogger.logSuspiciousActivity(ip, 'Account deletion failed', error.message);
-    res.status(500).json({ message: 'Failed to revoke access completely' });
-  }
-});
+/**
+ * @route   DELETE /api/auth/revoke
+ * @desc    Delete user account and all associated data
+ * @access  Private (requires authentication)
+ */
+router.delete('/revoke', authMiddleware, authStrictLimiter, asyncHandler(deleteAccount));
 
 /**
  * @route   POST /api/auth/change-password
