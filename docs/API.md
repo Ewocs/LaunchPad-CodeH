@@ -685,6 +685,216 @@ Get the count of remaining recovery codes.
 
 ---
 
+## Account Management Endpoints
+
+### Change Password
+
+Change the user's password. Requires current password verification.
+
+**Endpoint:** `POST /auth/change-password`
+
+**Authentication:** Required
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request Body:**
+```json
+{
+  "currentPassword": "OldPassword123",
+  "newPassword": "NewPassword456"
+}
+```
+
+**Validation Rules:**
+- `currentPassword`: Required, must match the user's current password
+- `newPassword`: Required, minimum 8 characters, must contain:
+  - At least one uppercase letter
+  - At least one lowercase letter
+  - At least one number
+  - Must be different from current password
+
+**Response:** `200 OK`
+```json
+{
+  "success": true,
+  "message": "Password changed successfully"
+}
+```
+
+**Error Responses:**
+
+`400 Bad Request` - Missing fields
+```json
+{
+  "success": false,
+  "message": "Both current password and new password are required"
+}
+```
+
+`400 Bad Request` - Password validation failed
+```json
+{
+  "success": false,
+  "message": "New password must be at least 8 characters long"
+}
+```
+
+```json
+{
+  "success": false,
+  "message": "New password must contain at least one uppercase letter, one lowercase letter, and one number"
+}
+```
+
+```json
+{
+  "success": false,
+  "message": "New password must be different from current password"
+}
+```
+
+`400 Bad Request` - Incorrect current password
+```json
+{
+  "success": false,
+  "message": "Current password is incorrect"
+}
+```
+
+`400 Bad Request` - OAuth account
+```json
+{
+  "success": false,
+  "message": "Cannot change password for OAuth-linked accounts. Please use your OAuth provider."
+}
+```
+
+`401 Unauthorized` - Not authenticated
+```json
+{
+  "message": "No token provided"
+}
+```
+
+`404 Not Found` - User not found
+```json
+{
+  "message": "User not found"
+}
+```
+
+**Security Features:**
+- Verifies current password before allowing change
+- Enforces strong password requirements
+- Logs all password change attempts (success and failure)
+- Prevents OAuth users from changing password
+- Creates activity log for audit trail
+- Rate limited to prevent brute force attacks
+
+**Notes:**
+- Password is automatically hashed before storage
+- User remains logged in after password change
+- Security log entry is created with IP address
+- OAuth-authenticated users must use their OAuth provider to change password
+
+---
+
+### Delete Account
+
+Permanently delete user account and all associated data. This action cannot be undone.
+
+**Endpoint:** `DELETE /auth/revoke`
+
+**Authentication:** Required
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request Body:** None
+
+**Response:** `200 OK`
+```json
+{
+  "success": true,
+  "message": "Account deleted successfully. All your data has been permanently removed.",
+  "deletedData": {
+    "subscriptions": 45,
+    "emails": 1234,
+    "activityLogs": 89
+  }
+}
+```
+
+**Error Responses:**
+
+`401 Unauthorized` - Not authenticated
+```json
+{
+  "message": "No token provided"
+}
+```
+
+`500 Internal Server Error` - Deletion failed
+```json
+{
+  "message": "Failed to revoke access completely"
+}
+```
+
+**What Gets Deleted:**
+
+This endpoint performs a complete account deletion including:
+
+1. **OAuth Tokens** (if applicable):
+   - Revokes all Google OAuth access tokens
+   - Revokes all Google refresh tokens
+   - User loses access to Gmail API
+
+2. **User Data**:
+   - User profile (name, email, preferences)
+   - Authentication credentials
+   - 2FA settings and recovery codes
+
+3. **Associated Records**:
+   - All subscriptions tracked for the user
+   - All scanned emails
+   - All activity logs
+   - User preferences and settings
+
+4. **Audit Trail**:
+   - Final activity log entry is created before deletion
+   - Security log entry with deletion statistics
+   - Includes IP address and timestamp
+
+**Security Features:**
+- Requires valid authentication token
+- Rate limited to prevent abuse (5 requests per minute)
+- Comprehensive logging of deletion attempt
+- Graceful handling if OAuth token revocation fails
+- Detailed statistics returned showing what was deleted
+
+**Important Notes:**
+- ⚠️ **This action is permanent and cannot be undone**
+- All data is immediately and permanently deleted
+- User is automatically logged out after deletion
+- OAuth access is revoked from Google
+- Any active sessions become invalid
+- User must create a new account to use the service again
+
+**Recommended Frontend Flow:**
+1. Display warning about permanent deletion
+2. Require user to type "DELETE" or similar confirmation
+3. Show a second confirmation dialog
+4. Call this endpoint only after double confirmation
+5. Display success message
+6. Logout user
+7. Redirect to landing page or login
+
+**Rate Limiting:**
+- Strict rate limit: 5 requests per minute per IP
+- Additional tracking for suspicious deletion patterns
+
+---
+
 ## Subscription Endpoints
 
 ### Get All Subscriptions
