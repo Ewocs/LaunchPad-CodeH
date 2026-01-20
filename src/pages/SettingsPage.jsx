@@ -202,11 +202,25 @@ const SettingsPage = () => {
     setMessage('');
 
     try {
-      const response = await api.put('/auth/profile', profileForm);
-      setMessage('Profile updated successfully');
-      // Update context if needed
+      // Only send name (email cannot be changed)
+      const response = await api.patch('/auth/profile', { 
+        name: profileForm.name 
+      });
+      
+      if (response.data.success) {
+        setMessage(response.data.message || 'Profile updated successfully');
+        // Update the form with the returned user data
+        setProfileForm({
+          name: response.data.user.name,
+          email: response.data.user.email
+        });
+      }
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to update profile');
+      console.error('Profile update error:', err);
+      const errorMsg = err.response?.data?.message || 
+                       err.response?.data?.errors?.[0]?.msg || 
+                       'Failed to update profile';
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }

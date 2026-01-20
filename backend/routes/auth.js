@@ -326,6 +326,84 @@ router.get('/profile', authMiddleware, asyncHandler(async (req, res) => {
   });
 }));
 
+// Update Profile (name only, email cannot be changed)
+router.patch(
+  '/profile',
+  authMiddleware,
+  [
+    body('name')
+      .optional()
+      .trim()
+      .isLength({ min: 2, max: 100 })
+      .withMessage('Name must be between 2 and 100 characters')
+      .matches(/^[a-zA-Z\s'-]+$/)
+      .withMessage('Name can only contain letters, spaces, hyphens, and apostrophes')
+  ],
+  asyncHandler(async (req, res) => {
+    // Validate request
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const { name } = req.body;
+
+    // Check if name is provided
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        message: 'No updates provided'
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Update name
+    const oldName = user.name;
+    user.name = name;
+    await user.save();
+
+    // Log profile update activity
+    await logActivity(
+      user._id,
+      'PROFILE_UPDATE',
+      `Profile updated: name changed from "${oldName}" to "${name}"`,
+      req,
+      'success',
+      { oldName, newName: name }
+    );
+
+    securityLogger.logAuthSuccess(
+      user._id,
+      user.email,
+      req.ip || req.connection.remoteAddress,
+      'profile-update'
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Profile updated successfully',
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        picture: user.picture
+      }
+    });
+  })
+);
+
 router.patch(
   '/preferences',
   authMiddleware,
