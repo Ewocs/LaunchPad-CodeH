@@ -7,7 +7,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
  * ============================================
  * 
  * This context provides:
- * - Theme switching between 'breach-dark', 'security-blue', 'high-contrast'
+ * - Theme switching between 'light' and 'dark'
  * - Persistence to localStorage
  * - Backend sync for authenticated users
  * - Smooth theme transition animations
@@ -16,37 +16,26 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 
 // Available themes configuration
 export const THEMES = {
-  'breach-dark': {
-    id: 'breach-dark',
-    name: 'Breach Dark',
-    description: 'Sleek cybersecurity-inspired dark theme',
-    icon: '🛡️',
+  'light': {
+    id: 'light',
+    name: 'Light',
+    description: 'Clean, modern light theme',
+    icon: '☀️',
+    preview: {
+      primary: '#2563eb',
+      secondary: '#0ea5e9',
+      bg: '#ffffff'
+    }
+  },
+  'dark': {
+    id: 'dark',
+    name: 'Dark',
+    description: 'Sleek dark theme',
+    icon: '🌙',
     preview: {
       primary: '#00d4ff',
       secondary: '#6b73ff',
       bg: '#0a0a0a'
-    }
-  },
-  'security-blue': {
-    id: 'security-blue',
-    name: 'Security Blue',
-    description: 'Professional corporate security theme',
-    icon: '🔒',
-    preview: {
-      primary: '#3b82f6',
-      secondary: '#0ea5e9',
-      bg: '#0f172a'
-    }
-  },
-  'high-contrast': {
-    id: 'high-contrast',
-    name: 'High Contrast',
-    description: 'WCAG AAA compliant accessibility theme',
-    icon: '♿',
-    preview: {
-      primary: '#00e5ff',
-      secondary: '#ffeb3b',
-      bg: '#000000'
     }
   }
 };
@@ -70,25 +59,26 @@ const ThemeContext = createContext(undefined);
  * Wraps the application to provide theme state and controls
  */
 export const ThemeProvider = ({ children }) => {
-  const [theme, setThemeState] = useState('breach-dark');
+  const [theme, setThemeState] = useState('light');
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [systemPrefersDark, setSystemPrefersDark] = useState(true);
+  const [systemPrefersDark, setSystemPrefersDark] = useState(false);
 
   // Get initial theme from localStorage or system preference
   useEffect(() => {
     const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
     
     if (savedTheme && THEMES[savedTheme]) {
+      // Use saved theme
       setThemeState(savedTheme);
       document.documentElement.setAttribute('data-theme', savedTheme);
+      console.log('✅ Loaded saved theme:', savedTheme);
     } else {
-      // Check system preference
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      setSystemPrefersDark(prefersDark);
-      // Default to breach-dark for dark preference, security-blue for light
-      const defaultTheme = prefersDark ? 'breach-dark' : 'security-blue';
+      // No saved theme - use light as default
+      const defaultTheme = 'light';
       setThemeState(defaultTheme);
       document.documentElement.setAttribute('data-theme', defaultTheme);
+      localStorage.setItem(THEME_STORAGE_KEY, defaultTheme);
+      console.log('🆕 Set default theme:', defaultTheme);
     }
   }, []);
 
@@ -110,7 +100,7 @@ export const ThemeProvider = ({ children }) => {
    * @param {boolean} persist - Whether to save to localStorage (default: true)
    */
   const setTheme = useCallback(async (newTheme, persist = true) => {
-    if (!THEMES[newTheme] || newTheme === theme) return;
+    if (!THEMES[newTheme]) return;
 
     // Start transition
     setIsTransitioning(true);
@@ -127,13 +117,15 @@ export const ThemeProvider = ({ children }) => {
     if (persist) {
       localStorage.setItem(THEME_STORAGE_KEY, newTheme);
     }
+    
+    console.log('Theme changed to:', newTheme);
 
     // End transition after animation completes
     setTimeout(() => {
       setIsTransitioning(false);
       document.documentElement.classList.remove('theme-transitioning');
     }, 400); // Match CSS transition duration
-  }, [theme]);
+  }, []);
 
   /**
    * Cycle to next theme
@@ -150,7 +142,7 @@ export const ThemeProvider = ({ children }) => {
    */
   const resetTheme = useCallback(() => {
     localStorage.removeItem(THEME_STORAGE_KEY);
-    setTheme('breach-dark');
+    setTheme('light');
   }, [setTheme]);
 
   /**

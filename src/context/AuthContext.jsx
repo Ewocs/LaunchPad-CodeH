@@ -63,37 +63,29 @@ export const AuthProvider = ({ children }) => {
     initializeAuth();
   }, [initializeAuth]);
 
-  // Apply Custom Theme
+  // Apply Theme (Light/Dark Mode)
   useEffect(() => {
-    if (user?.preferences) {
-      const { theme, customTheme } = user.preferences;
+    if (user?.preferences?.theme) {
+      const { theme } = user.preferences;
       const root = document.documentElement;
 
-      if (theme === 'custom' && customTheme) {
-        if (customTheme.primaryColor) {
-          root.style.setProperty('--accent-cyan', customTheme.primaryColor);
-          root.style.setProperty('--primary-color', customTheme.primaryColor); // Some components might use this
-        }
-        if (customTheme.secondaryColor) {
-          root.style.setProperty('--secondary-purple', customTheme.secondaryColor);
-        }
-        if (customTheme.backgroundColor) {
-          root.style.setProperty('--bg-primary', customTheme.backgroundColor);
-          // Also adjust secondary bg slightly lighter/darker if possible, or just leave it
-        }
-        if (customTheme.textColor) {
-          root.style.setProperty('--text-primary', customTheme.textColor);
-        }
+      if (theme === 'dark') {
+        root.classList.add('dark-mode');
+        root.classList.remove('light-mode');
+        root.setAttribute('data-theme', 'dark'); // Use dark theme
       } else {
-        // Reset to CSS defaults
-        root.style.removeProperty('--accent-cyan');
-        root.style.removeProperty('--primary-color');
-        root.style.removeProperty('--secondary-purple');
-        root.style.removeProperty('--bg-primary');
-        root.style.removeProperty('--text-primary');
+        root.classList.add('light-mode');
+        root.classList.remove('dark-mode');
+        root.setAttribute('data-theme', 'light'); // Use light theme
       }
+    } else {
+      // Default to light mode if no preference
+      const root = document.documentElement;
+      root.classList.add('light-mode');
+      root.classList.remove('dark-mode');
+      root.setAttribute('data-theme', 'light');
     }
-  }, [user]);
+  }, [user?.preferences?.theme]);
 
   const login = useCallback(async (code) => {
     try {

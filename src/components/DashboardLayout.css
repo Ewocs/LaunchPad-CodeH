@@ -1,7 +1,7 @@
 .dashboard-layout {
   display: flex;
   min-height: 100vh;
-  background: #f9fafb;
+  background: var(--theme-bg-primary);
 }
 
 .dashboard-main {
@@ -17,8 +17,8 @@
   align-items: center;
   gap: 1rem;
   padding: 1rem 1.5rem;
-  background: white;
-  border-bottom: 1px solid #e5e7eb;
+  background: var(--theme-surface);
+  border-bottom: 1px solid var(--theme-border-light);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -29,7 +29,7 @@
   border: none;
   cursor: pointer;
   padding: 0.5rem;
-  color: #1f2937;
+  color: var(--theme-text-primary);
   font-size: 1.5rem;
   line-height: 1;
   display: flex;
@@ -40,7 +40,7 @@
 .mobile-title {
   font-size: 1.125rem;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--theme-text-primary);
 }
 
 /* Main Content */

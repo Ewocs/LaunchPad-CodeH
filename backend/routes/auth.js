@@ -203,12 +203,148 @@ router.post(
 );
 
 /* =====================================================
-   PROTECTED ROUTES
-router.post(
-  '/logout',
+   AUTHENTICATED USER ACTIONS (CSRF PROTECTED)
+   ===================================================== */
+
+// Get current user profile
+router.get('/profile', authMiddleware, asyncHandler(async (req, res) => {
+  res.status(200).json({
+    user: {
+      id: req.user._id,
+      email: req.user.email,
+      name: req.user.name,
+      picture: req.user.picture,
+      preferences: req.user.preferences,
+      is2FAEnabled: req.user.is2FAEnabled
+    }
+  });
+}));
+
+// Update Profile (name only, email cannot be changed)
+router.patch(
+  '/profile',
   authMiddleware,
-  requireCsrf,
+  [
+    body('name')
+      .optional()
+      .trim()
+      .isLength({ min: 2, max: 100 })
+      .withMessage('Name must be between 2 and 100 characters')
+      .matches(/^[a-zA-Z\s'-]+$/)
+      .withMessage('Name can only contain letters, spaces, hyphens, and apostrophes')
+  ],
   asyncHandler(async (req, res) => {
+    // Validate request
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const { name } = req.body;
+
+    // Check if name is provided
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        message: 'No updates provided'
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Update name
+    const oldName = user.name;
+    user.name = name;
+    await user.save();
+
+    // Log profile update activity
+    await logActivity(
+      user._id,
+      'PROFILE_UPDATE',
+      `Profile updated: name changed from "${oldName}" to "${name}"`,
+      req,
+      'success',
+      { oldName, newName: name }
+    );
+
+    securityLogger.logAuthSuccess(
+      user._id,
+      user.email,
+      req.ip || req.connection.remoteAddress,
+      'profile-update'
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Profile updated successfully',
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        picture: user.picture
+      }
+    });
+  })
+);
+
+router.patch(
+  '/preferences',
+  authMiddleware,
+  body('scanFrequency')
+    .optional()
+    .isIn(['daily', 'weekly', 'monthly', 'manual']),
+  body('emailCategories').optional().isArray(),
+  body('notifications').optional().isBoolean(),
+  body('theme').optional().isIn(['light', 'dark']),
+  body('whitelist').optional().isArray(),
+  body('blacklist').optional().isArray(),
+  asyncHandler(async (req, res) => {
+    // Validate request
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const user = req.user;
+    const { scanFrequency, emailCategories, notifications, theme, whitelist, blacklist } = req.body;
+
+    if (scanFrequency) user.preferences.scanFrequency = scanFrequency;
+    if (emailCategories)
+      user.preferences.emailCategories = emailCategories;
+    if (notifications !== undefined)
+      user.preferences.notifications = notifications;
+    if (theme) user.preferences.theme = theme;
+    if (whitelist) user.preferences.whitelist = whitelist;
+    if (blacklist) user.preferences.blacklist = blacklist;
+
+    await user.save();
+
+    // Log theme change activity
+    if (theme) {
+      await logActivity(
+        user._id,
+        'THEME_CHANGE',
+        `Theme changed to ${theme}`,
+        req,
+        'success',
+        { theme }
+      );
+    }
+
     res.status(200).json({
       message: 'Logged out successfully',
     });
